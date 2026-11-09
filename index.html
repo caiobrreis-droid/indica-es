@@ -7,7 +7,7 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap">
 <script src="https://unpkg.com/pizzip@3.1.7/dist/pizzip.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-<script src="app-auth.js" defer></script>
+<script src="app-auth.js?v=3" defer></script>
 <style>
 /* Layout: coluna de formulário à esquerda, lista de indicações à direita */
 :root {
@@ -20,6 +20,7 @@
   --bg: #141a1b; --panel: #1d2527; --ink: #e4ebe9; --muted: #9aa8a6;
   --line: #2f3a3c; --accent: #4fb68c; --accent-ink: #0d1a14; --soft: #20332b; --warn: #e0a24a; color-scheme: dark } }
 * { box-sizing: border-box }
+[hidden] { display: none !important }
 body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 var(--sans) }
 header { padding: 20px max(16px, env(safe-area-inset-left)) 8px; max-width: 1280px; margin: 0 auto }
 h1 { font: 600 24px/1.2 var(--serif); margin: 0 }
