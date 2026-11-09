@@ -136,7 +136,7 @@ function migrate() {
   if (fs.existsSync(GABS_FILE)) return upgradeJulio();
   const id = crypto.randomUUID();
   const gab = { id, nome: "Gabinete Vereador Júlio Cézar Medeiros Lima", ativo: true, createdAt: new Date().toISOString(),
-    config: { ...DEFAULT_CONFIG, vereador: "JÚLIO CÉZAR MEDEIROS LIMA - MDB", prefeito: "Marcelo Zeitoune", presidente: "Genilson Costa e Silva", seloPos: "superior" } };
+    config: { ...DEFAULT_CONFIG, vereador: "JÚLIO CÉZAR MEDEIROS LIMA - MDB", prefeito: "Marcelo Zeitoune", presidente: "Genilson Costa e Silva" } };
   fs.mkdirSync(path.join(GABS_DIR, id), { recursive: true });
   for (const [k, buf] of Object.entries(julioAssets())) fs.writeFileSync(assetPath(id, k), buf);
   writeGabs([gab]);
@@ -152,7 +152,7 @@ const OLD_JULIO = {
     "b67ee9b8ba0782b198159b415a79bd64f08830fe03314a581879713a9c96241d",   // modelo original
     "26465e82bfddda13a26457f71973d9a9c8652f2f6c53275933923ec594b66f89",   // modelo novo com o brasão fora do centro
   ],
-  selo: ["ce4f1b65bc1fb954d49ecec48f2c5cb1e6cef0e9169a0b145aaea1ff310bfdff"],
+  selo: ["fba2f0396041dbde056d3cf3e61b2a66ee1b3a52919ab6bdcbdc49231bb058e7"],   // selo "Filho de Roraima": volta para o selo com a foto
 };
 function upgradeJulio() {
   const gabs = readGabs(); let assets = null, changed = false;
@@ -162,7 +162,7 @@ function upgradeJulio() {
     assets ||= julioAssets();
     if (!assets[k]) continue;
     fs.writeFileSync(assetPath(g.id, k), assets[k]);
-    if (k === "selo") { g.config = { ...g.config, seloPos: "superior" }; changed = true }
+    if (k === "selo") { g.config = { ...g.config, seloPos: "inferior" }; changed = true }
     console.log(`Modelo novo aplicado: ${k} de ${g.nome}`);
   }
   if (changed) writeGabs(gabs);
