@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Entrar · Gerador de Indicações</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap">
+<style>
+:root {
+  --bg: #f3f5f4; --panel: #ffffff; --ink: #1c2a2e; --muted: #5d6b6e;
+  --line: #d6dddb; --accent: #1f6b4f; --accent-ink: #ffffff; --soft: #e5efea; --err: #b3261e; --err-soft: #fbeceb;
+  --sans: "IBM Plex Sans", system-ui, sans-serif;
+  --serif: "Source Serif 4", Georgia, serif;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #141a1b; --panel: #1d2527; --ink: #e4ebe9; --muted: #9aa8a6;
+  --line: #2f3a3c; --accent: #4fb68c; --accent-ink: #0d1a14; --soft: #20332b; --err: #f2b8b5; --err-soft: #3a2220; color-scheme: dark } }
+* { box-sizing: border-box }
+html, body { height: 100% }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 var(--sans);
+  -webkit-font-smoothing: antialiased; display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr) }
+
+/* Painel da marca */
+.brand { position: relative; overflow: hidden; color: #eef6f2; padding: 48px clamp(24px, 5vw, 64px);
+  display: flex; flex-direction: column; justify-content: space-between;
+  background: radial-gradient(120% 90% at 0% 0%, #2a8763 0%, transparent 55%),
+              radial-gradient(90% 80% at 100% 100%, #0e3a2b 0%, transparent 60%), #16503b }
+.brand::after { content: ""; position: absolute; inset: 0; pointer-events: none; opacity: .09;
+  background-image: linear-gradient(#fff 1px, transparent 1px), linear-gradient(90deg, #fff 1px, transparent 1px);
+  background-size: 44px 44px; mask-image: linear-gradient(160deg, #000 10%, transparent 70%) }
+.brand > * { position: relative; z-index: 1 }
+.seal { display: inline-flex; align-items: center; gap: 10px; font-weight: 500; font-size: 14px; letter-spacing: .02em; opacity: .9 }
+.seal span { width: 34px; height: 34px; border-radius: 9px; display: grid; place-items: center;
+  background: rgba(255,255,255,.14); box-shadow: inset 0 0 0 1px rgba(255,255,255,.22); font: 600 17px var(--serif) }
+.brand h1 { font: 600 clamp(30px, 3.6vw, 44px)/1.1 var(--serif); margin: 0 0 14px; letter-spacing: -.01em; text-wrap: balance }
+.brand p { margin: 0; max-width: 42ch; font-size: 16px; color: rgba(238,246,242,.8); text-wrap: pretty }
+.brand ul { list-style: none; padding: 0; margin: 28px 0 0; display: grid; gap: 10px; font-size: 14.5px; color: rgba(238,246,242,.88) }
+.brand li { display: flex; gap: 10px; align-items: center }
+.brand li::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: #8fe0bc; flex: none }
+.brand small { font-size: 13px; color: rgba(238,246,242,.65) }
+
+/* Formulário */
+.side { display: flex; flex-direction: column; padding: 32px clamp(16px, 5vw, 64px) 20px; min-height: 100% }
+.wrap { margin: auto 0; width: 100%; max-width: 380px; align-self: center }
+.wrap h2 { font: 600 26px/1.2 var(--serif); margin: 0 0 6px }
+.wrap > p { margin: 0 0 28px; color: var(--muted) }
+form { display: grid; gap: 16px }
+label { display: grid; gap: 6px; font-size: 13.5px; font-weight: 500 }
+.field { position: relative }
+input { font: inherit; color: var(--ink); background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+  padding: 11px 14px; width: 100%; transition: border-color .15s, box-shadow .15s }
+input:hover { border-color: color-mix(in srgb, var(--accent) 45%, var(--line)) }
+input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent) }
+.field input { padding-right: 76px }
+.eye { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); border: 0; background: none; color: var(--muted);
+  font: 500 13px var(--sans); padding: 6px 8px; border-radius: 6px; cursor: pointer }
+.eye:hover { color: var(--ink); background: var(--soft) }
+.eye:focus-visible, .submit:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px }
+.submit { font: 600 15px var(--sans); border: 0; border-radius: 10px; padding: 12px 16px; cursor: pointer; margin-top: 4px;
+  background: var(--accent); color: var(--accent-ink); display: flex; justify-content: center; align-items: center; gap: 10px;
+  transition: filter .15s, transform .1s }
+.submit:hover { filter: brightness(1.08) }
+.submit:active { transform: scale(.98) }
+.submit[disabled] { opacity: .75; cursor: progress }
+.spin { width: 16px; height: 16px; border-radius: 50%; border: 2px solid currentColor; border-right-color: transparent; animation: r .7s linear infinite; display: none }
+.submit[disabled] .spin { display: block }
+@keyframes r { to { transform: rotate(1turn) } }
+.err { display: none; background: var(--err-soft); color: var(--err); border-radius: 10px; padding: 10px 12px; font-size: 14px }
+.err.on { display: block; animation: shake .3s }
+@keyframes shake { 25% { transform: translateX(-4px) } 75% { transform: translateX(4px) } }
+.note { margin-top: 22px; font-size: 13px; color: var(--muted) }
+footer { text-align: center; font-size: 13px; color: var(--muted); padding-top: 24px }
+footer strong { color: var(--ink); font-weight: 600 }
+
+@media (max-width: 860px) {
+  html, body { height: auto }
+  body { grid-template-columns: minmax(0, 1fr); min-height: 100vh; grid-template-rows: auto 1fr }
+  .brand { padding: 28px 16px 32px }
+  .brand ul, .brand small { display: none }
+  .brand h1 { margin-top: 28px; font-size: 28px }
+  .side { padding: 32px 16px 20px; min-height: auto }
+}
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important } }
+</style>
+</head>
+<body>
+<aside class="brand">
+  <div class="seal"><span>I</span>Câmara Municipal de Boa Vista</div>
+  <div>
+    <h1>Gerador de Indicações</h1>
+    <p>Gabinete do Vereador Júlio Cézar Medeiros Lima. Monte as indicações no papel timbrado, prontas para assinar.</p>
+    <ul>
+      <li>Várias ruas e serviços de uma vez</li>
+      <li>Word e PDF no papel timbrado do gabinete</li>
+      <li>Acesso só para a equipe cadastrada</li>
+    </ul>
+  </div>
+  <small>Acesso restrito à equipe do gabinete.</small>
+</aside>
+
+<main class="side">
+  <div class="wrap">
+    <h2>Entrar</h2>
+    <p>Use o usuário e a senha que o administrador cadastrou para você.</p>
+    <form id="f" novalidate>
+      <div class="err" id="err" role="alert"></div>
+      <label>Usuário
+        <input id="u" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" required autofocus>
+      </label>
+      <label>Senha
+        <div class="field">
+          <input id="p" name="password" type="password" autocomplete="current-password" required>
+          <button type="button" class="eye" id="eye" aria-label="Mostrar senha" aria-pressed="false">Mostrar</button>
+        </div>
+      </label>
+      <button class="submit" id="go" type="submit"><span class="spin" aria-hidden="true"></span><span id="goTxt">Entrar</span></button>
+    </form>
+    <p class="note">Esqueceu a senha? Fale com o administrador do sistema.</p>
+  </div>
+  <footer>Desenvolvido por <strong>Caio Reis</strong></footer>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+$("eye").onclick = () => {
+  const show = $("p").type === "password";
+  $("p").type = show ? "text" : "password";
+  $("eye").textContent = show ? "Ocultar" : "Mostrar";
+  $("eye").setAttribute("aria-pressed", show);
+  $("eye").setAttribute("aria-label", show ? "Ocultar senha" : "Mostrar senha");
+  $("p").focus();
+};
+function fail(msg) { const e = $("err"); e.classList.remove("on"); void e.offsetWidth; e.textContent = msg; e.classList.add("on") }
+$("f").onsubmit = async ev => {
+  ev.preventDefault();
+  if (!$("u").value.trim() || !$("p").value) return fail("Preencha o usuário e a senha.");
+  $("go").disabled = true; $("goTxt").textContent = "Entrando…";
+  try {
+    const r = await fetch("/api/login", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username: $("u").value, password: $("p").value }) });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.error || "Não foi possível entrar.");
+    location.replace("/");
+  } catch (err) {
+    fail(err.message === "Failed to fetch" ? "Sem conexão com o servidor." : err.message);
+    $("p").select();
+    $("go").disabled = false; $("goTxt").textContent = "Entrar";
+  }
+};
+</script>
+</body>
+</html>

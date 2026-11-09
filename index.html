@@ -8,6 +8,7 @@
 <script src="https://unpkg.com/pizzip@3.1.7/dist/pizzip.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="indicacoes-assets.js"></script>
+<script src="app-auth.js" defer></script>
 <style>
 /* Layout: coluna de formulário à esquerda, lista de indicações à direita */
 :root {
@@ -63,12 +64,53 @@ button.small { padding: 4px 9px; font-size: 13px }
   padding: 8px 16px; border-radius: 6px; font-size: 14px; opacity: 0; transition: opacity .2s; pointer-events: none }
 .toast.on { opacity: 1 }
 details summary { cursor: pointer; font-size: 13px; color: var(--accent); font-weight: 500 }
+
+/* Barra do usuário, gerenciamento de usuários e rodapé */
+header { display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: flex-start; justify-content: space-between }
+header .titles { min-width: 0; flex: 1 1 320px }
+.userbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap }
+.who { display: flex; align-items: center; gap: 8px; font-size: 14px; padding-right: 4px }
+.avatar { width: 32px; height: 32px; border-radius: 50%; background: var(--accent); color: var(--accent-ink);
+  display: grid; place-items: center; font: 600 13px var(--sans); flex: none }
+.who small { display: block; color: var(--muted); font-size: 12px; line-height: 1.2 }
+.who b { display: block; font-weight: 600; line-height: 1.2 }
+dialog { border: 1px solid var(--line); border-radius: 12px; background: var(--panel); color: var(--ink); padding: 0;
+  width: min(640px, calc(100vw - 32px)); max-height: calc(100vh - 48px); box-shadow: 0 20px 60px rgba(0,0,0,.25) }
+dialog::backdrop { background: rgba(10, 20, 18, .45) }
+dialog .dhead { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 18px; border-bottom: 1px solid var(--line) }
+dialog .dhead h3 { margin: 0; font: 600 18px var(--serif) }
+dialog .dbody { padding: 16px 18px; display: grid; gap: 16px; overflow: auto }
+dialog input[type=password] { font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 7px 9px; width: 100% }
+.ulist { display: grid; gap: 8px }
+.urow { display: flex; align-items: center; gap: 10px; border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; flex-wrap: wrap }
+.urow .info { flex: 1 1 160px; min-width: 0 }
+.urow .info b { display: block; font-weight: 600 }
+.urow .info span { color: var(--muted); font-size: 13px }
+.urow .acts { display: flex; gap: 6px; flex-wrap: wrap }
+.newuser { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; border: 1px solid var(--line); border-radius: 8px; padding: 14px; background: var(--bg) }
+.newuser input, .newuser select { background: var(--panel) }
+.newuser .full { grid-column: 1 / -1 }
+@media (max-width: 520px) { .newuser { grid-template-columns: 1fr } }
+.formerr { color: #b3261e; font-size: 13.5px; margin: 0 }
+.formerr:empty { display: none }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .formerr { color: #f2b8b5 } }
+button.danger:hover { border-color: #b3261e; color: #b3261e }
+.sitefoot { text-align: center; color: var(--muted); font-size: 13px; padding: 8px 16px 28px }
+.sitefoot strong { color: var(--ink); font-weight: 600 }
 </style>
 </head>
 <body>
 <header>
-  <h1>Gerador de Indicações</h1>
-  <p>Escolha as ruas e os serviços: o sistema monta todas as indicações no papel timbrado do gabinete, prontas para assinar.</p>
+  <div class="titles">
+    <h1>Gerador de Indicações</h1>
+    <p>Escolha as ruas e os serviços: o sistema monta todas as indicações no papel timbrado do gabinete, prontas para assinar.</p>
+  </div>
+  <div class="userbar" id="userbar" hidden>
+    <div class="who"><span class="avatar" id="avatar"></span><span><b id="whoName"></b><small id="whoRole"></small></span></div>
+    <button type="button" class="small" id="btnUsers" hidden>Usuários</button>
+    <button type="button" class="small" id="btnPass">Minha senha</button>
+    <button type="button" class="small" id="btnLogout">Sair</button>
+  </div>
 </header>
 
 <main>
@@ -127,7 +169,40 @@ details summary { cursor: pointer; font-size: 13px; color: var(--accent); font-w
     <div class="list" id="list"></div>
   </section>
 </main>
+<footer class="sitefoot">Desenvolvido por <strong>Caio Reis</strong></footer>
 <div class="toast" id="toast"></div>
+
+<dialog id="dlgUsers" aria-labelledby="dlgUsersT">
+  <div class="dhead"><h3 id="dlgUsersT">Usuários</h3><button type="button" class="small" data-close>Fechar</button></div>
+  <div class="dbody">
+    <form class="newuser" id="formNew" novalidate>
+      <h2 class="full">Adicionar usuário</h2>
+      <label>Nome <input type="text" id="nuName" autocomplete="off" placeholder="Ex.: Maria Souza"></label>
+      <label>Usuário (login) <input type="text" id="nuUser" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="Ex.: maria"></label>
+      <label>Senha inicial <input type="password" id="nuPass" autocomplete="new-password" placeholder="Mínimo de 8 caracteres"></label>
+      <label>Perfil
+        <select id="nuRole"><option value="usuario">Usuário: só gera indicações</option><option value="admin">Administrador: também gerencia usuários</option></select>
+      </label>
+      <p class="formerr full" id="nuErr" role="alert"></p>
+      <div class="full"><button type="submit" class="primary">Adicionar usuário</button></div>
+    </form>
+    <div>
+      <h2 style="margin-bottom:10px">Cadastrados</h2>
+      <div class="ulist" id="ulist"></div>
+    </div>
+  </div>
+</dialog>
+
+<dialog id="dlgPass" aria-labelledby="dlgPassT">
+  <div class="dhead"><h3 id="dlgPassT">Alterar minha senha</h3><button type="button" class="small" data-close>Fechar</button></div>
+  <form class="dbody" id="formPass" novalidate>
+    <label>Senha atual <input type="password" id="cpCur" autocomplete="current-password"></label>
+    <label>Nova senha <input type="password" id="cpNew" autocomplete="new-password" placeholder="Mínimo de 8 caracteres"></label>
+    <label>Repita a nova senha <input type="password" id="cpNew2" autocomplete="new-password"></label>
+    <p class="formerr" id="cpErr" role="alert"></p>
+    <div><button type="submit" class="primary">Salvar nova senha</button></div>
+  </form>
+</dialog>
 
 <script>
 const DEFAULT_SERVICES = [

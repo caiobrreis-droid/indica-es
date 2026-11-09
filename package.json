@@ -1,0 +1,13 @@
+{
+  "name": "gerador-de-indicacoes",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Gerador de Indicações do gabinete, com login e cadastro de usuários",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
