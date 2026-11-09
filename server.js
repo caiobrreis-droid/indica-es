@@ -141,16 +141,19 @@ function migrate() {
   console.log("Gabinete inicial criado:", gab.nome);
 }
 // Modelo de novembro de 2026: troca o timbrado e o selo do Júlio pelos novos,
-// mas só onde ainda estão as imagens antigas (nunca sobrescreve um envio feito pela tela).
+// mas só onde ainda estão as versões anteriores (nunca sobrescreve um envio feito pela tela).
 const OLD_JULIO = {
-  timbrado: "b67ee9b8ba0782b198159b415a79bd64f08830fe03314a581879713a9c96241d",
-  selo: "ce4f1b65bc1fb954d49ecec48f2c5cb1e6cef0e9169a0b145aaea1ff310bfdff",
+  timbrado: [
+    "b67ee9b8ba0782b198159b415a79bd64f08830fe03314a581879713a9c96241d",   // modelo original
+    "26465e82bfddda13a26457f71973d9a9c8652f2f6c53275933923ec594b66f89",   // modelo novo com o brasão fora do centro
+  ],
+  selo: ["ce4f1b65bc1fb954d49ecec48f2c5cb1e6cef0e9169a0b145aaea1ff310bfdff"],
 };
 function upgradeJulio() {
   const gabs = readGabs(); let assets = null, changed = false;
   for (const g of gabs) for (const k of ASSET_KINDS) {
     let buf; try { buf = fs.readFileSync(assetPath(g.id, k)) } catch { continue }
-    if (crypto.createHash("sha256").update(buf).digest("hex") !== OLD_JULIO[k]) continue;
+    if (!OLD_JULIO[k].includes(crypto.createHash("sha256").update(buf).digest("hex"))) continue;
     assets ||= julioAssets();
     if (!assets[k]) continue;
     fs.writeFileSync(assetPath(g.id, k), assets[k]);
