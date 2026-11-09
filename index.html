@@ -7,7 +7,7 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap">
 <script src="https://unpkg.com/pizzip@3.1.7/dist/pizzip.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-<script src="app-auth.js?v=3" defer></script>
+<script src="app-auth.js?v=4" defer></script>
 <style>
 /* Layout: coluna de formulário à esquerda, lista de indicações à direita */
 :root {
@@ -253,7 +253,10 @@ button.danger:hover { border-color: #b3261e; color: #b3261e }
         <div class="asset">
           <b>Selo da foto</b>
           <div class="thumb" id="thSelo"></div>
-          <p class="hint">Vai no canto de baixo da foto da rua. Use PNG com fundo transparente.</p>
+          <p class="hint">Vai no canto esquerdo da foto da rua. PNG com fundo transparente fica melhor.</p>
+          <label>Posição do selo
+            <select id="cfSeloPos"><option value="inferior">Embaixo à esquerda, grande</option><option value="superior">Em cima à esquerda, pequeno</option></select>
+          </label>
           <div class="row">
             <input type="file" accept="image/png,image/jpeg" id="upSelo" data-kind="selo" hidden>
             <button type="button" class="small primary" data-up="selo">Enviar selo</button>
@@ -471,8 +474,10 @@ function composePhoto(li) {
   if ($("usaPlaca").checked) drawPlaca(ctx, locais[li]);
   const selo = loadAsset("selo");
   if ($("usaSelo").checked && selo.complete && selo.naturalWidth) {
-    const sw = PHOTO_W * 0.396, sh = sw * selo.naturalHeight / selo.naturalWidth;
-    ctx.drawImage(selo, 0, PHOTO_H - sh, sw, sh);
+    // "superior": selo pequeno no canto de cima (modelo novo); "inferior": selo grande embaixo
+    const top = CFG.seloPos === "superior";
+    const sw = PHOTO_W * (top ? 0.266 : 0.396), sh = sw * selo.naturalHeight / selo.naturalWidth;
+    ctx.drawImage(selo, 0, top ? 0 : PHOTO_H - sh, sw, sh);
   }
   return c;
 }
@@ -513,6 +518,8 @@ function picture(rid, id, cx, cy, anchor) {
   return `<w:r><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="${cx}" cy="${cy}"/><wp:effectExtent l="0" t="0" r="0" b="0"/><wp:docPr id="${id}" name="Foto"/><wp:cNvGraphicFramePr/>${graphic}</wp:inline></w:drawing></w:r>`;
 }
 const b64bytes = dataUrl => Uint8Array.from(atob(dataUrl.split(",")[1]), c => c.charCodeAt(0));
+// Parágrafo de abertura: a indicação vai ao Presidente da Câmara, que encaminha ao Prefeito.
+const abertura = prefeito => `O Vereador que esta subscreve, com amparo no ${ARTIGO} do Regimento Interno, solicita que seja encaminhada ao Excelentíssimo Senhor ${title(prefeito)}, Prefeito do Município de ${MUN}, a seguinte Indicação:`;
 function dataExtenso() {
   const d = $("data").valueAsDate || new Date();
   const mes = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"][d.getUTCMonth()];
@@ -526,12 +533,10 @@ async function makeDocx(it) {
   const ARIAL = `<w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:cs="Arial"/>`;
   let body = para((TIMBRADO ? picture("rIdTimbrado", 1, 595.3 * EMU, 841.9 * EMU, true) : "") + run("INDICAÇÃO", { i: true, sz: 28, font: ARIAL }), { jc: "center", after: 200 })
     + para(run("Excelentíssimo Senhor"))
-    + para(run(up(prefeito), { b: true }))
-    + para(run(`Prefeito de ${MUN}`, { b: true }), { after: 240 })
-    + para(run(`O Vereador que esta subscreve, com amparo no ${ARTIGO} do Regimento Interno, solicito que o Excelentíssimo Senhor `)
-      + run(up(presidente), { b: true })
-      + run(`, Presidente da Câmara Municipal de ${MUN} encaminhe ao Excelentíssimo Senhor ${title(prefeito)}, Prefeito do Município de ${MUN}, a seguinte Indicação:`), { after: 200 })
-    + para(run("‘‘" + it.texto.trim(), { b: true, sz: 20 }), { after: 200 });
+    + para(run(up(presidente), { b: true }))
+    + para(run(`Presidente da Câmara Municipal de ${MUN}`, { b: true }), { after: 240 })
+    + para(run(abertura(prefeito)), { after: 200 })
+    + para(run(it.texto.trim(), { b: true, sz: 20 }), { after: 200 });
   if (temFoto) body += para(picture("rIdFoto", 2, 452 * EMU, 211 * EMU, false), { jc: "center", after: 120 });
   body += para(run("JUSTIFICATIVA", { b: true }), { jc: "center", after: 200, before: temFoto ? 0 : 240 })
     + para(run($("justif").value.trim(), { font: ARIAL_N }), { after: 360 })
@@ -591,14 +596,10 @@ function makePdf(it) {
   pdf.setFont("helvetica", "italic"); pdf.setFontSize(14);
   pdf.text("INDICAÇÃO", 297.6, 163, { align: "center" });
   let y = richPara(pdf, [{ t: "Excelentíssimo Senhor" }], { y: 183, size: 12, lh: 13.5 });
-  y = richPara(pdf, [{ t: up(prefeito), b: true }], { y, size: 12, lh: 13.5 });
-  y = richPara(pdf, [{ t: `Prefeito de ${MUN}`, b: true }], { y, size: 12, lh: 13.5 }) + 12;
-  y = richPara(pdf, [
-    { t: `O Vereador que esta subscreve, com amparo no ${ARTIGO} do Regimento Interno, solicito que o Excelentíssimo Senhor ` },
-    { t: up(presidente), b: true },
-    { t: `, Presidente da Câmara Municipal de ${MUN} encaminhe ao Excelentíssimo Senhor ${title(prefeito)}, Prefeito do Município de ${MUN}, a seguinte Indicação:` }
-  ], { y, size: 12, lh: 14 }) + 10;
-  y = richPara(pdf, [{ t: "‘‘" + it.texto.trim(), b: true }], { y, size: 10, lh: 11.5 });
+  y = richPara(pdf, [{ t: up(presidente), b: true }], { y, size: 12, lh: 13.5 });
+  y = richPara(pdf, [{ t: `Presidente da Câmara Municipal de ${MUN}`, b: true }], { y, size: 12, lh: 13.5 }) + 12;
+  y = richPara(pdf, [{ t: abertura(prefeito) }], { y, size: 12, lh: 14 }) + 10;
+  y = richPara(pdf, [{ t: it.texto.trim(), b: true }], { y, size: 10, lh: 11.5 });
   if (fotos[it.li]) {
     pdf.addImage(composePhoto(it.li).toDataURL("image/jpeg", 0.85), "JPEG", (595.28 - 452) / 2, y - 2, 452, 211);
     y += 211 + 16;

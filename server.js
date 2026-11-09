@@ -72,8 +72,9 @@ const DUMMY_HASH = hashPassword(crypto.randomBytes(8).toString("hex"));
 const CONFIG_FIELDS = {
   vereador: 120, prefeito: 120, presidente: 120, municipio: 80, uf: 2, artigo: 80, justif: 3000,
 };
+const SELO_POS = ["inferior", "superior"];   // canto da foto onde vai o selo (sempre à esquerda)
 const DEFAULT_CONFIG = {
-  vereador: "", prefeito: "", presidente: "", municipio: "Boa Vista", uf: "RR", artigo: "art. 110, IX",
+  vereador: "", prefeito: "", presidente: "", municipio: "Boa Vista", uf: "RR", artigo: "art. 110, IX", seloPos: "inferior",
   justif: "A indicação ora apresentada visa reforçar a solicitação dos moradores, para que possa melhorar as condições de tráfego de todos que transitam pela via, assim sendo, solicito que seja incluída no cronograma de obras do município a realização desse serviço. Certo de contar com o atendimento a esta indicação, reitero os meus votos de estima e apreço.",
 };
 const ASSET_KINDS = ["timbrado", "selo"];
@@ -85,6 +86,7 @@ function cleanConfig(input) {
   const out = {};
   for (const [k, max] of Object.entries(CONFIG_FIELDS)) if (input[k] != null) out[k] = String(input[k]).trim().slice(0, max);
   if (out.uf) out.uf = out.uf.toUpperCase();
+  if (SELO_POS.includes(input.seloPos)) out.seloPos = input.seloPos;
   return out;
 }
 
@@ -118,22 +120,44 @@ function ensureMaster() {
 
 // Primeira vez com gabinetes: cria o gabinete do Júlio Cézar com o timbrado que já existia
 // e coloca nele os usuários cadastrados antes.
-function migrate() {
-  if (fs.existsSync(GABS_FILE)) return;
-  const id = crypto.randomUUID();
-  const gab = { id, nome: "Gabinete Vereador Júlio Cézar Medeiros Lima", ativo: true, createdAt: new Date().toISOString(),
-    config: { ...DEFAULT_CONFIG, vereador: "JÚLIO CÉZAR MEDEIROS LIMA - MDB", prefeito: "Marcelo Zeitoune", presidente: "Genilson Costa e Silva" } };
-  fs.mkdirSync(path.join(GABS_DIR, id), { recursive: true });
+function julioAssets() {
   try {
     const src = fs.readFileSync(path.join(ROOT, "indicacoes-assets.js"), "utf8");
     const assets = JSON.parse(src.slice(src.indexOf("{"), src.lastIndexOf("}") + 1));
-    for (const k of ASSET_KINDS) if (assets[k]) fs.writeFileSync(assetPath(id, k), Buffer.from(assets[k].split(",")[1], "base64"));
-  } catch (err) { console.error("Não consegui copiar o timbrado antigo:", err.message) }
+    return Object.fromEntries(ASSET_KINDS.filter(k => assets[k]).map(k => [k, Buffer.from(assets[k].split(",")[1], "base64")]));
+  } catch (err) { console.error("Não consegui ler o timbrado do Júlio:", err.message); return {} }
+}
+function migrate() {
+  if (fs.existsSync(GABS_FILE)) return upgradeJulio();
+  const id = crypto.randomUUID();
+  const gab = { id, nome: "Gabinete Vereador Júlio Cézar Medeiros Lima", ativo: true, createdAt: new Date().toISOString(),
+    config: { ...DEFAULT_CONFIG, vereador: "JÚLIO CÉZAR MEDEIROS LIMA - MDB", prefeito: "Marcelo Zeitoune", presidente: "Genilson Costa e Silva", seloPos: "superior" } };
+  fs.mkdirSync(path.join(GABS_DIR, id), { recursive: true });
+  for (const [k, buf] of Object.entries(julioAssets())) fs.writeFileSync(assetPath(id, k), buf);
   writeGabs([gab]);
   const users = readUsers();
   for (const u of users) if (!u.master && !u.gabinetId) u.gabinetId = id;
   writeUsers(users);
   console.log("Gabinete inicial criado:", gab.nome);
+}
+// Modelo de novembro de 2026: troca o timbrado e o selo do Júlio pelos novos,
+// mas só onde ainda estão as imagens antigas (nunca sobrescreve um envio feito pela tela).
+const OLD_JULIO = {
+  timbrado: "b67ee9b8ba0782b198159b415a79bd64f08830fe03314a581879713a9c96241d",
+  selo: "ce4f1b65bc1fb954d49ecec48f2c5cb1e6cef0e9169a0b145aaea1ff310bfdff",
+};
+function upgradeJulio() {
+  const gabs = readGabs(); let assets = null, changed = false;
+  for (const g of gabs) for (const k of ASSET_KINDS) {
+    let buf; try { buf = fs.readFileSync(assetPath(g.id, k)) } catch { continue }
+    if (crypto.createHash("sha256").update(buf).digest("hex") !== OLD_JULIO[k]) continue;
+    assets ||= julioAssets();
+    if (!assets[k]) continue;
+    fs.writeFileSync(assetPath(g.id, k), assets[k]);
+    if (k === "selo") { g.config = { ...g.config, seloPos: "superior" }; changed = true }
+    console.log(`Modelo novo aplicado: ${k} de ${g.nome}`);
+  }
+  if (changed) writeGabs(gabs);
 }
 ensureMaster();
 migrate();
