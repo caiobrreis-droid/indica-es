@@ -36,7 +36,8 @@
   }
 
   async function init() {
-    try { me = (await call("GET", "/api/me")).user } catch { return }
+    let info; try { info = await call("GET", "/api/me"); me = info.user } catch { return }
+    if (info.storage && !info.storage.persistent) $("storageWarn").hidden = false;
     $("avatar").textContent = initials(me.name);
     $("whoName").textContent = me.name;
     $("whoRole").textContent = ROLE[me.role] || ROLE.usuario;

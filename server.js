@@ -29,6 +29,11 @@ const SESSION_HOURS = 12;
 const PROD = !!process.env.RAILWAY_ENVIRONMENT || process.env.NODE_ENV === "production";
 let setupError = null;   // quando falta configuração, o site mostra o aviso em vez de cair
 
+// No Railway, só o que está num volume sobrevive a um deploy. Fora dele, usuários e gabinetes somem.
+const VOLUME = process.env.RAILWAY_VOLUME_MOUNT_PATH;
+const PERSISTENT = !PROD || (!!VOLUME && path.resolve(DATA_DIR).startsWith(path.resolve(VOLUME)));
+if (!PERSISTENT) console.error(`ATENÇÃO: os dados estão em ${DATA_DIR}, fora de um volume. Eles serão apagados no próximo deploy. Crie um volume no serviço do Railway.`);
+
 fs.mkdirSync(GABS_DIR, { recursive: true });
 
 /* ---------- Arquivos JSON ---------- */
@@ -276,7 +281,7 @@ async function api(req, res, url) {
   const me = readSession(req);
   if (!me) return json(res, 401, { error: "Sessão expirada. Entre de novo." });
 
-  if (route === "GET /api/me") return json(res, 200, { user: publicUser(me) });
+  if (route === "GET /api/me") return json(res, 200, { user: publicUser(me), ...(me.master ? { storage: { persistent: PERSISTENT, dir: DATA_DIR } } : {}) });
 
   if (route === "POST /api/me/password") {
     const b = await readBody(req);

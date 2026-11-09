@@ -7,7 +7,7 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap">
 <script src="https://unpkg.com/pizzip@3.1.7/dist/pizzip.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-<script src="app-auth.js?v=4" defer></script>
+<script src="app-auth.js?v=5" defer></script>
 <style>
 /* Layout: coluna de formulário à esquerda, lista de indicações à direita */
 :root {
@@ -113,6 +113,10 @@ button.danger:hover { border-color: #b3261e; color: #b3261e }
 .asset .row { display: flex; gap: 6px; flex-wrap: wrap }
 .badge { font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 99px; background: var(--soft); color: var(--accent) }
 .badge.off { background: #fbeceb; color: #b3261e }
+.warnbar { max-width: 1248px; margin: 8px auto 0; margin-inline: max(16px, calc((100% - 1248px) / 2)); padding: 12px 14px; border-radius: 8px;
+  background: #fbeceb; color: #8c1d18; border: 1px solid #f2b8b5; font-size: 14px }
+.warnbar code { background: rgba(0,0,0,.06); padding: 1px 5px; border-radius: 4px }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .warnbar { background: #3a2220; color: #f2b8b5; border-color: #6b2e2a } }
 .sitefoot { text-align: center; color: var(--muted); font-size: 13px; padding: 8px 16px 28px }
 .sitefoot strong { color: var(--ink); font-weight: 600 }
 </style>
@@ -133,6 +137,11 @@ button.danger:hover { border-color: #b3261e; color: #b3261e }
     <button type="button" class="small" id="btnLogout">Sair</button>
   </div>
 </header>
+
+<div class="warnbar" id="storageWarn" role="alert" hidden>
+  <b>Os dados não estão sendo guardados de forma permanente.</b>
+  Gabinetes, usuários e timbrados enviados somem a cada novo deploy. No Railway, abra o serviço, crie um <b>Volume</b> com o caminho <code>/data</code> e faça um novo deploy. Depois cadastre de novo o que tiver sumido.
+</div>
 
 <main>
   <div style="display:grid;gap:16px;align-content:start">
