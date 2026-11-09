@@ -1,0 +1,479 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gerador de Indicações</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap">
+<script src="https://unpkg.com/pizzip@3.1.7/dist/pizzip.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="indicacoes-assets.js"></script>
+<style>
+/* Layout: coluna de formulário à esquerda, lista de indicações à direita */
+:root {
+  --bg: #f3f5f4; --panel: #ffffff; --ink: #1c2a2e; --muted: #5d6b6e;
+  --line: #d6dddb; --accent: #1f6b4f; --accent-ink: #ffffff; --soft: #e5efea; --warn: #9a5b00;
+  --sans: "IBM Plex Sans", system-ui, sans-serif;
+  --serif: "Source Serif 4", Georgia, serif;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #141a1b; --panel: #1d2527; --ink: #e4ebe9; --muted: #9aa8a6;
+  --line: #2f3a3c; --accent: #4fb68c; --accent-ink: #0d1a14; --soft: #20332b; --warn: #e0a24a; color-scheme: dark } }
+* { box-sizing: border-box }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 var(--sans) }
+header { padding: 20px max(16px, env(safe-area-inset-left)) 8px; max-width: 1280px; margin: 0 auto }
+h1 { font: 600 24px/1.2 var(--serif); margin: 0 }
+header p { margin: 4px 0 0; color: var(--muted) }
+main { display: grid; grid-template-columns: minmax(0, 440px) minmax(0, 1fr); gap: 20px;
+  padding: 12px max(16px, env(safe-area-inset-left)) 40px; max-width: 1280px; margin: 0 auto }
+@media (max-width: 880px) { main { grid-template-columns: minmax(0, 1fr) } }
+section.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 16px; display: grid; gap: 14px; align-content: start }
+h2 { font: 600 12px/1 var(--sans); text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 0 }
+label { font-size: 13px; color: var(--muted); display: grid; gap: 4px }
+input[type=text], input[type=date], select, textarea {
+  font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line);
+  border-radius: 6px; padding: 7px 9px; width: 100% }
+textarea { font-family: var(--serif); font-size: 15px; resize: vertical }
+input:focus, select:focus, textarea:focus, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px }
+.local { display: grid; grid-template-columns: 3fr 2fr auto; gap: 6px; align-items: end; padding-bottom: 10px; border-bottom: 1px solid var(--line) }
+.local .foto { grid-column: 1 / -1; display: flex; gap: 8px; align-items: center; font-size: 13px; color: var(--muted) }
+.local .foto img { height: 44px; aspect-ratio: 452 / 211; object-fit: cover; border-radius: 4px; border: 1px solid var(--line) }
+button { font: 500 14px var(--sans); border-radius: 6px; padding: 7px 12px; cursor: pointer;
+  border: 1px solid var(--line); background: var(--panel); color: var(--ink) }
+button:hover { border-color: var(--accent) }
+button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent) }
+button.small { padding: 4px 9px; font-size: 13px }
+.services { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 10px }
+@media (max-width: 480px) { .services { grid-template-columns: 1fr } .local { grid-template-columns: 1fr } }
+.services label { display: flex; gap: 6px; align-items: center; color: var(--ink); font-size: 14px }
+.services .del { margin-left: auto; border: 0; background: none; color: var(--muted); padding: 0 4px }
+.check { display: flex; gap: 6px; align-items: center; color: var(--ink); font-size: 14px }
+.hint { font-size: 12.5px; color: var(--muted); margin: 0 }
+.toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center }
+.toolbar .count { margin-right: auto; font-weight: 600 }
+.card { border: 1px solid var(--line); border-radius: 8px; padding: 12px; display: grid; gap: 8px; background: var(--panel) }
+.card .meta { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 13px; color: var(--muted) }
+.chip { background: var(--soft); color: var(--accent); font-weight: 600; padding: 2px 8px; border-radius: 99px; font-size: 12px }
+.chip.warn { color: var(--warn) }
+.card .acts { display: flex; gap: 6px; margin-left: auto }
+.list { display: grid; gap: 10px }
+.empty { color: var(--muted); padding: 30px; text-align: center; border: 1px dashed var(--line); border-radius: 8px }
+.preview { width: 100%; max-width: 520px; aspect-ratio: 452 / 211; border-radius: 4px; border: 1px solid var(--line); display: block }
+.toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--ink); color: var(--bg);
+  padding: 8px 16px; border-radius: 6px; font-size: 14px; opacity: 0; transition: opacity .2s; pointer-events: none }
+.toast.on { opacity: 1 }
+details summary { cursor: pointer; font-size: 13px; color: var(--accent); font-weight: 500 }
+</style>
+</head>
+<body>
+<header>
+  <h1>Gerador de Indicações</h1>
+  <p>Escolha as ruas e os serviços: o sistema monta todas as indicações no papel timbrado do gabinete, prontas para assinar.</p>
+</header>
+
+<main>
+  <div style="display:grid;gap:16px;align-content:start">
+    <section class="panel">
+      <h2>1. Ruas</h2>
+      <div id="locais" style="display:grid;gap:10px"></div>
+      <button id="addLocal" type="button">+ Adicionar outra rua</button>
+      <label>Abrangência
+        <select id="abrang">
+          <option value="toda">Em toda a extensão da rua</option>
+          <option value="na">Na rua (sem "toda a extensão")</option>
+        </select>
+      </label>
+    </section>
+
+    <section class="panel">
+      <h2>2. Serviços</h2>
+      <div class="services" id="services"></div>
+      <details>
+        <summary>Cadastrar novo serviço</summary>
+        <div style="display:grid;gap:6px;margin-top:8px">
+          <label>Nome curto <input type="text" id="novoNome" placeholder="Ex.: Lombada"></label>
+          <label>Texto na indicação <input type="text" id="novoTexto" placeholder="Ex.: PROMOVA A INSTALAÇÃO DE REDUTOR DE VELOCIDADE"></label>
+          <button type="button" id="addServ">Salvar serviço</button>
+        </div>
+      </details>
+    </section>
+
+    <section class="panel">
+      <h2>3. Documento</h2>
+      <label>Data <input type="date" id="data"></label>
+      <label class="check"><input type="checkbox" id="usaSelo" checked> Colocar o selo "Júlio Cézar Medeiros" na foto</label>
+      <label class="check"><input type="checkbox" id="usaPlaca" checked> Colocar placa com o nome da rua na foto</label>
+      <label>Justificativa
+        <textarea id="justif" rows="5"></textarea>
+      </label>
+      <details>
+        <summary>Destinatários</summary>
+        <div style="display:grid;gap:6px;margin-top:8px">
+          <label>Prefeito(a) <input type="text" id="prefeito"></label>
+          <label>Presidente da Câmara <input type="text" id="presidente"></label>
+          <label>Vereador (assinatura) <input type="text" id="vereador"></label>
+        </div>
+      </details>
+    </section>
+  </div>
+
+  <section class="panel" style="align-content:start">
+    <div class="toolbar">
+      <span class="count" id="count">0 indicações</span>
+      <button type="button" id="copyAll">Copiar textos</button>
+      <button type="button" class="primary" id="zipAll">Baixar todas em Word (.zip)</button>
+      <button type="button" class="primary" id="zipPdf">Baixar todas em PDF (.zip)</button>
+    </div>
+    <div class="list" id="list"></div>
+  </section>
+</main>
+<div class="toast" id="toast"></div>
+
+<script>
+const DEFAULT_SERVICES = [
+  { nome: "Calçada", texto: "PROMOVA A CONSTRUÇÃO DE CALÇADA" },
+  { nome: "Meio-fio e sarjeta", texto: "PROMOVA A CONSTRUÇÃO DE MEIO-FIO E SARJETA" },
+  { nome: "Tapa-buraco", texto: "PROMOVA A OPERAÇÃO TAPA-BURACO" },
+  { nome: "Asfaltamento", texto: "PROMOVA A PAVIMENTAÇÃO ASFÁLTICA" },
+  { nome: "Recapeamento", texto: "PROMOVA O RECAPEAMENTO ASFÁLTICO" },
+  { nome: "Iluminação pública", texto: "PROMOVA A MANUTENÇÃO E AMPLIAÇÃO DA ILUMINAÇÃO PÚBLICA" },
+  { nome: "Drenagem", texto: "PROMOVA A CONSTRUÇÃO DE SISTEMA DE DRENAGEM PLUVIAL" },
+  { nome: "Limpeza e roçagem", texto: "PROMOVA A LIMPEZA E ROÇAGEM" },
+  { nome: "Limpeza de bueiros", texto: "PROMOVA A LIMPEZA E DESOBSTRUÇÃO DOS BUEIROS" },
+  { nome: "Sinalização", texto: "PROMOVA A SINALIZAÇÃO HORIZONTAL E VERTICAL" },
+  { nome: "Faixa de pedestre", texto: "PROMOVA A PINTURA DE FAIXA DE PEDESTRE" },
+  { nome: "Redutor de velocidade", texto: "PROMOVA A INSTALAÇÃO DE REDUTOR DE VELOCIDADE" },
+  { nome: "Poda de árvores", texto: "PROMOVA A PODA DAS ÁRVORES" },
+  { nome: "Abrigo de ônibus", texto: "PROMOVA A INSTALAÇÃO DE ABRIGO NO PONTO DE ÔNIBUS" },
+];
+const DEFAULTS = {
+  prefeito: "Marcelo Zeitoune",
+  presidente: "Genilson Costa e Silva",
+  vereador: "JÚLIO CÉZAR MEDEIROS LIMA - MDB",
+  justif: "A indicação ora apresentada visa reforçar a solicitação dos moradores, para que possa melhorar as condições de tráfego de todos que transitam pela via, assim sendo, solicito que seja incluída no cronograma de obras do município a realização desse serviço. Certo de contar com o atendimento a esta indicação, reitero os meus votos de estima e apreço."
+};
+const ABERTURA = "QUE A PREFEITURA MUNICIPAL DE BOA VISTA, POR MEIO DA SECRETARIA COMPETENTE,";
+const MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+const PHOTO_W = 1600, PHOTO_H = 746;     // mesma proporção da foto da indicação de referência
+
+const store = {
+  get(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d } catch { return d } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)) } catch {} }
+};
+const $ = id => document.getElementById(id);
+
+let services = store.get("ind.services", DEFAULT_SERVICES);
+let checked = new Set(store.get("ind.checked", ["Calçada", "Meio-fio e sarjeta"]));
+let locais = store.get("ind.locais", [{ rua: "Rua Manoel Pereira de Castro", bairro: "Cinturão Verde" }]);
+const fotos = {};        // foto original de cada rua (em memória), por índice
+let edits = {};          // textos editados à mão, por chave
+
+for (const k of ["prefeito", "presidente", "vereador", "justif"]) {
+  $(k).value = store.get("ind." + k, DEFAULTS[k]);
+  $(k).addEventListener("input", () => store.set("ind." + k, $(k).value));
+}
+$("data").valueAsDate = new Date();
+
+function toast(msg) { const t = $("toast"); t.textContent = msg; t.classList.add("on"); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove("on"), 2000) }
+const up = s => s.trim().replace(/\s+/g, " ").toLocaleUpperCase("pt-BR");
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const title = s => s.trim().toLocaleLowerCase("pt-BR").replace(/(^|\s)(\S)/g, (m, a, b) => a + b.toLocaleUpperCase("pt-BR"))
+  .replace(/\s(De|Da|Do|Das|Dos|E)(?=\s)/g, m => m.toLocaleLowerCase("pt-BR"));
+
+/* ---------- Ruas ---------- */
+function renderLocais() {
+  $("locais").innerHTML = locais.map((l, i) => `
+    <div class="local">
+      <label>Rua / Avenida <input type="text" id="rua${i}" data-i="${i}" data-f="rua" value="${esc(l.rua)}" placeholder="Rua..."></label>
+      <label>Bairro <input type="text" id="bairro${i}" data-i="${i}" data-f="bairro" value="${esc(l.bairro)}" placeholder="Bairro"></label>
+      <button type="button" data-rm="${i}" title="Remover rua" ${locais.length < 2 ? "disabled" : ""}>✕</button>
+      <div class="foto">
+        ${fotos[i] ? `<img src="${fotos[i].src}" alt="">` : ""}
+        <input type="file" accept="image/*" id="foto${i}" data-foto="${i}" hidden>
+        <button type="button" class="small" onclick="document.getElementById('foto${i}').click()">${fotos[i] ? "Trocar foto" : "Adicionar foto da rua"}</button>
+        ${fotos[i] ? "" : "<span>sem foto</span>"}
+      </div>
+    </div>`).join("");
+}
+$("locais").addEventListener("input", e => {
+  const { i, f } = e.target.dataset; if (i == null || !f) return;
+  locais[i][f] = e.target.value; store.set("ind.locais", locais); build();
+});
+$("locais").addEventListener("change", e => {
+  const i = e.target.dataset.foto; if (i == null || !e.target.files[0]) return;
+  const img = new Image();
+  img.onload = () => { fotos[i] = img; renderLocais(); build() };
+  img.onerror = () => toast("Não consegui abrir essa imagem");
+  img.src = URL.createObjectURL(e.target.files[0]);
+});
+$("locais").addEventListener("click", e => {
+  const i = e.target.dataset.rm; if (i == null) return;
+  locais.splice(i, 1);
+  const rest = Object.keys(fotos).map(Number).sort((a, b) => a - b);   // reindexa as fotos
+  const copy = { ...fotos }; rest.forEach(k => delete fotos[k]);
+  rest.forEach(k => { if (k < i) fotos[k] = copy[k]; else if (k > i) fotos[k - 1] = copy[k] });
+  store.set("ind.locais", locais); renderLocais(); build();
+});
+$("addLocal").onclick = () => { locais.push({ rua: "", bairro: "" }); renderLocais(); $("rua" + (locais.length - 1)).focus() };
+
+/* ---------- Serviços ---------- */
+function renderServices() {
+  $("services").innerHTML = services.map((s, i) => `
+    <label title="${esc(s.texto)}"><input type="checkbox" id="sv${i}" data-n="${esc(s.nome)}" ${checked.has(s.nome) ? "checked" : ""}> ${esc(s.nome)}
+      <button type="button" class="del" data-del="${i}" title="Excluir serviço">✕</button></label>`).join("");
+}
+$("services").addEventListener("change", e => {
+  const n = e.target.dataset.n; if (!n) return;
+  e.target.checked ? checked.add(n) : checked.delete(n);
+  store.set("ind.checked", [...checked]); build();
+});
+$("services").addEventListener("click", e => {
+  const i = e.target.dataset.del; if (i == null) return;
+  e.preventDefault(); checked.delete(services[i].nome); services.splice(i, 1);
+  store.set("ind.services", services); renderServices(); build();
+});
+$("addServ").onclick = () => {
+  const nome = $("novoNome").value.trim(), texto = up($("novoTexto").value);
+  if (!nome || !texto) return toast("Preencha o nome e o texto do serviço");
+  services.push({ nome, texto }); checked.add(nome);
+  store.set("ind.services", services); store.set("ind.checked", [...checked]);
+  $("novoNome").value = $("novoTexto").value = ""; renderServices(); build(); toast("Serviço salvo");
+};
+
+/* ---------- Montagem das indicações ---------- */
+let items = [];
+function build() {
+  const toda = $("abrang").value === "toda";
+  const sel = services.filter(s => checked.has(s.nome));
+  items = [];
+  locais.forEach((l, li) => { if (!l.rua.trim()) return; sel.forEach(s => {
+    const rua = up(l.rua), bairro = up(l.bairro);
+    const local = (toda ? "EM TODA A EXTENSÃO DA " : "NA ") + rua + (bairro ? ", NO BAIRRO " + bairro : "");
+    const key = s.nome + "|" + rua + "|" + bairro + "|" + toda;
+    items.push({ key, li, servico: s.nome, rua: l.rua.trim(), bairro: l.bairro.trim(), texto: edits[key] ?? `${ABERTURA} ${s.texto}, ${local}.` });
+  }) });
+  renderList();
+}
+function renderList() {
+  $("count").textContent = items.length + (items.length === 1 ? " indicação" : " indicações");
+  if (!items.length) { $("list").innerHTML = `<div class="empty">Preencha uma rua e marque pelo menos um serviço.</div>`; return }
+  const shown = new Set();
+  $("list").innerHTML = items.map((it, i) => {
+    const prev = fotos[it.li] && !shown.has(it.li) ? (shown.add(it.li), `<canvas class="preview" data-prev="${it.li}"></canvas>`) : "";
+    return `
+    <div class="card">
+      <div class="meta">${esc(it.servico)} · ${esc(it.rua)}
+        ${fotos[it.li] ? "" : `<span class="chip warn">sem foto</span>`}
+        <span class="acts"><button type="button" class="small" data-copy="${i}">Copiar</button><button type="button" class="small" data-dl="${i}">Word</button><button type="button" class="small" data-pdf="${i}">PDF</button></span></div>
+      <textarea id="tx${i}" data-i="${i}" rows="3">${esc(it.texto)}</textarea>
+      ${prev}
+    </div>`}).join("");
+  document.querySelectorAll("canvas[data-prev]").forEach(c => {
+    const li = c.dataset.prev, src = composePhoto(li);
+    c.width = src.width; c.height = src.height; c.getContext("2d").drawImage(src, 0, 0);
+  });
+}
+$("list").addEventListener("input", e => { const i = e.target.dataset.i; if (i == null) return; items[i].texto = e.target.value; edits[items[i].key] = e.target.value });
+$("list").addEventListener("click", async e => {
+  if (e.target.dataset.copy != null) copy(items[e.target.dataset.copy].texto);
+  if (e.target.dataset.dl != null) {
+    const it = items[e.target.dataset.dl];
+    save(new Blob([await makeDocx(it)], { type: MIME }), fileName(it));
+  }
+  if (e.target.dataset.pdf != null) {
+    const it = items[e.target.dataset.pdf];
+    save(new Blob([makePdf(it)], { type: "application/pdf" }), fileName(it, "pdf"));
+  }
+});
+["abrang"].forEach(id => $(id).addEventListener("input", build));
+["usaSelo", "usaPlaca"].forEach(id => $(id).addEventListener("change", renderList));
+
+async function copy(text) {
+  try { await navigator.clipboard.writeText(text); toast("Copiado") }
+  catch { toast("Não foi possível copiar automaticamente") }
+}
+$("copyAll").onclick = () => copy(items.map(it => it.texto).join("\n\n"));
+
+/* ---------- Foto: recorte + selo + placa ---------- */
+const imgCache = {};
+function loadAsset(name) {
+  if (!imgCache[name]) { imgCache[name] = new Image(); imgCache[name].src = window.ASSETS[name] }
+  return imgCache[name];
+}
+loadAsset("selo").onload = () => renderList();
+
+function composePhoto(li) {
+  const c = document.createElement("canvas"); c.width = PHOTO_W; c.height = PHOTO_H;
+  const ctx = c.getContext("2d"), img = fotos[li];
+  const s = Math.max(PHOTO_W / img.naturalWidth, PHOTO_H / img.naturalHeight);   // preenche e corta o excesso
+  const w = img.naturalWidth * s, h = img.naturalHeight * s;
+  ctx.drawImage(img, (PHOTO_W - w) / 2, (PHOTO_H - h) / 2, w, h);
+  if ($("usaPlaca").checked) drawPlaca(ctx, locais[li]);
+  const selo = loadAsset("selo");
+  if ($("usaSelo").checked && selo.complete && selo.naturalWidth) {
+    const sw = PHOTO_W * 0.396, sh = sw * selo.naturalHeight / selo.naturalWidth;
+    ctx.drawImage(selo, 0, PHOTO_H - sh, sw, sh);
+  }
+  return c;
+}
+// Placa de rua no canto superior direito, no estilo das placas de Boa Vista
+function drawPlaca(ctx, l) {
+  const W = PHOTO_W * 0.25, H = W * 0.5, x = PHOTO_W - W - 14, y = 14;
+  ctx.save();
+  ctx.fillStyle = "#5f6670"; ctx.strokeStyle = "#d9dde2"; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.roundRect(x, y, W, H, 8); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = "#ffffff"; ctx.textBaseline = "top";
+  const words = l.rua.trim().split(/\s+/), tipo = words.length > 1 ? words.shift() : "";
+  const lines = [tipo]; let cur = "";
+  ctx.font = `600 ${H * 0.15}px Arial, sans-serif`;
+  for (const w of words) { const t = cur ? cur + " " + w : w; if (ctx.measureText(t).width > W - 30 && cur) { lines.push(cur); cur = w } else cur = t }
+  if (cur) lines.push(cur);
+  const fs = Math.min(H * 0.15, (H * 0.72) / lines.filter(Boolean).length / 1.15);
+  ctx.font = `600 ${fs}px Arial, sans-serif`;
+  lines.filter(Boolean).forEach((t, k) => ctx.fillText(t, x + 15, y + 12 + k * fs * 1.15));
+  ctx.fillStyle = "#e8eaed"; ctx.fillRect(x + 4, y + H * 0.8, W - 8, H * 0.2 - 4);
+  ctx.fillStyle = "#3d434a"; ctx.font = `600 ${H * 0.1}px Arial, sans-serif`; ctx.textBaseline = "middle";
+  ctx.fillText(l.bairro.trim(), x + 15, y + H * 0.9 - 2);
+  ctx.restore();
+}
+
+/* ---------- Word ---------- */
+const xmlEsc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const TNR = `<w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman" w:cs="Times New Roman"/>`;
+function run(text, { b, i, sz = 24, font = TNR } = {}) {
+  return `<w:r><w:rPr>${font}${b ? "<w:b/>" : ""}${i ? "<w:i/>" : ""}<w:sz w:val="${sz}"/><w:szCs w:val="${sz}"/></w:rPr><w:t xml:space="preserve">${xmlEsc(text)}</w:t></w:r>`;
+}
+function para(runs, { jc = "both", before = 0, after = 0 } = {}) {
+  return `<w:p><w:pPr><w:spacing w:before="${before}" w:after="${after}" w:line="240" w:lineRule="auto"/><w:jc w:val="${jc}"/></w:pPr>${runs}</w:p>`;
+}
+function picture(rid, id, cx, cy, anchor) {
+  cx = Math.round(cx); cy = Math.round(cy);           // o Word recusa medidas fracionadas
+  const graphic = `<a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:nvPicPr><pic:cNvPr id="${id}" name="img${id}"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="${rid}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic>`;
+  if (anchor) return `<w:r><w:drawing><wp:anchor distT="0" distB="0" distL="0" distR="0" simplePos="0" relativeHeight="0" behindDoc="1" locked="1" layoutInCell="1" allowOverlap="1"><wp:simplePos x="0" y="0"/><wp:positionH relativeFrom="page"><wp:posOffset>0</wp:posOffset></wp:positionH><wp:positionV relativeFrom="page"><wp:posOffset>0</wp:posOffset></wp:positionV><wp:extent cx="${cx}" cy="${cy}"/><wp:effectExtent l="0" t="0" r="0" b="0"/><wp:wrapNone/><wp:docPr id="${id}" name="Timbrado"/><wp:cNvGraphicFramePr/>${graphic}</wp:anchor></w:drawing></w:r>`;
+  return `<w:r><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="${cx}" cy="${cy}"/><wp:effectExtent l="0" t="0" r="0" b="0"/><wp:docPr id="${id}" name="Foto"/><wp:cNvGraphicFramePr/>${graphic}</wp:inline></w:drawing></w:r>`;
+}
+const b64bytes = dataUrl => Uint8Array.from(atob(dataUrl.split(",")[1]), c => c.charCodeAt(0));
+function dataExtenso() {
+  const d = $("data").valueAsDate || new Date();
+  const mes = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"][d.getUTCMonth()];
+  return `${String(d.getUTCDate()).padStart(2, "0")} de ${mes} de ${d.getUTCFullYear()}`;
+}
+async function makeDocx(it) {
+  const EMU = 12700;                                  // por ponto
+  const prefeito = $("prefeito").value.trim(), presidente = $("presidente").value.trim();
+  const temFoto = !!fotos[it.li];
+  const ARIAL_N = `<w:rFonts w:ascii="Arial Narrow" w:hAnsi="Arial Narrow" w:cs="Arial"/>`;
+  const ARIAL = `<w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:cs="Arial"/>`;
+  let body = para(picture("rIdTimbrado", 1, 595.3 * EMU, 841.9 * EMU, true) + run("INDICAÇÃO", { i: true, sz: 28, font: ARIAL }), { jc: "center", after: 200 })
+    + para(run("Excelentíssimo Senhor"))
+    + para(run(up(prefeito), { b: true }))
+    + para(run("Prefeito de Boa Vista", { b: true }), { after: 240 })
+    + para(run("O Vereador que esta subscreve, com amparo no art. 110, IX do Regimento Interno, solicito que o Excelentíssimo Senhor ")
+      + run(up(presidente), { b: true })
+      + run(`, Presidente da Câmara Municipal de Boa Vista encaminhe ao Excelentíssimo Senhor ${title(prefeito)}, Prefeito do Município de Boa Vista, a seguinte Indicação:`), { after: 200 })
+    + para(run("‘‘" + it.texto.trim(), { b: true, sz: 20 }), { after: 200 });
+  if (temFoto) body += para(picture("rIdFoto", 2, 452 * EMU, 211 * EMU, false), { jc: "center", after: 120 });
+  body += para(run("JUSTIFICATIVA", { b: true }), { jc: "center", after: 200, before: temFoto ? 0 : 240 })
+    + para(run($("justif").value.trim(), { font: ARIAL_N }), { after: 360 })
+    + para(run(`Boa Vista – RR, ${dataExtenso()}`), { jc: "right", after: 480 })
+    + para(run("______________________________", { b: true }), { jc: "center" })
+    + para(run($("vereador").value.trim(), { b: true, sz: 20 }), { jc: "center" });
+
+  const z = new PizZip();
+  z.file("[Content_Types].xml", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="png" ContentType="image/png"/><Default Extension="jpeg" ContentType="image/jpeg"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>`);
+  z.file("_rels/.rels", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>`);
+  const IMG = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image";
+  z.file("word/_rels/document.xml.rels", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rIdTimbrado" Type="${IMG}" Target="media/timbrado.png"/>${temFoto ? `<Relationship Id="rIdFoto" Type="${IMG}" Target="media/foto.jpeg"/>` : ""}</Relationships>`);
+  z.file("word/media/timbrado.png", b64bytes(window.ASSETS.timbrado));
+  if (temFoto) z.file("word/media/foto.jpeg", b64bytes(composePhoto(it.li).toDataURL("image/jpeg", 0.85)));
+  z.file("word/document.xml", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><w:body>${body}<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="2780" w:right="1280" w:bottom="1600" w:left="1280" w:header="709" w:footer="709" w:gutter="0"/></w:sectPr></w:body></w:document>`);
+  return z.generate({ type: "uint8array", compression: "DEFLATE" });
+}
+const slug = s => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
+const fileName = (it, ext = "docx") => `${slug(it.rua)}_-_${slug(it.servico)}.${ext}`;
+
+/* ---------- PDF (mesmo layout do Word, posições em pontos de uma folha A4) ---------- */
+// Parágrafo com trechos em negrito, quebrado em linhas e justificado como no Word.
+function richPara(pdf, segs, { y, size, lh, family = "times", align = "justify", x = 64, width = 467 }) {
+  const words = []; let cur = null;
+  for (const s of segs) for (const part of s.t.split(/(\s+)/)) {
+    if (!part) continue;
+    if (/^\s+$/.test(part)) { cur = null; continue }
+    if (!cur) { cur = []; words.push(cur) }
+    cur.push({ t: part, b: !!s.b });
+  }
+  const style = b => pdf.setFont(family, b ? "bold" : "normal");
+  const wordW = w => w.reduce((n, p) => (style(p.b), n + pdf.getTextWidth(p.t)), 0);
+  pdf.setFontSize(size); style(false);
+  const space = pdf.getTextWidth(" ");
+  const lines = []; let line = [], lw = 0;
+  for (const w of words) {
+    const ww = wordW(w);
+    if (line.length && lw + space + ww > width) { lines.push(line); line = []; lw = 0 }
+    lw += (line.length ? space : 0) + ww; line.push({ w, ww });
+  }
+  if (line.length) lines.push(line);
+  lines.forEach((ln, k) => {
+    const total = ln.reduce((n, o) => n + o.ww, 0), last = k === lines.length - 1;
+    const gap = align === "justify" && !last && ln.length > 1 ? (width - total) / (ln.length - 1) : space;
+    const full = total + gap * (ln.length - 1);
+    let px = align === "center" ? x + (width - full) / 2 : align === "right" ? x + width - full : x;
+    for (const o of ln) { for (const p of o.w) { style(p.b); pdf.text(p.t, px, y); px += pdf.getTextWidth(p.t) } px += gap }
+    y += lh;
+  });
+  return y;
+}
+function makePdf(it) {
+  const pdf = new window.jspdf.jsPDF({ unit: "pt", format: "a4", compress: true });
+  const prefeito = $("prefeito").value.trim(), presidente = $("presidente").value.trim();
+  pdf.addImage(window.ASSETS.timbrado, "PNG", 0, 0, 595.28, 841.89, "timbrado", "FAST");
+  pdf.setTextColor(0, 0, 0);
+  pdf.setFont("helvetica", "italic"); pdf.setFontSize(14);
+  pdf.text("INDICAÇÃO", 297.6, 163, { align: "center" });
+  let y = richPara(pdf, [{ t: "Excelentíssimo Senhor" }], { y: 183, size: 12, lh: 13.5 });
+  y = richPara(pdf, [{ t: up(prefeito), b: true }], { y, size: 12, lh: 13.5 });
+  y = richPara(pdf, [{ t: "Prefeito de Boa Vista", b: true }], { y, size: 12, lh: 13.5 }) + 12;
+  y = richPara(pdf, [
+    { t: "O Vereador que esta subscreve, com amparo no art. 110, IX do Regimento Interno, solicito que o Excelentíssimo Senhor " },
+    { t: up(presidente), b: true },
+    { t: `, Presidente da Câmara Municipal de Boa Vista encaminhe ao Excelentíssimo Senhor ${title(prefeito)}, Prefeito do Município de Boa Vista, a seguinte Indicação:` }
+  ], { y, size: 12, lh: 14 }) + 10;
+  y = richPara(pdf, [{ t: "‘‘" + it.texto.trim(), b: true }], { y, size: 10, lh: 11.5 });
+  if (fotos[it.li]) {
+    pdf.addImage(composePhoto(it.li).toDataURL("image/jpeg", 0.85), "JPEG", (595.28 - 452) / 2, y - 2, 452, 211);
+    y += 211 + 16;
+  } else y += 14;
+  y = richPara(pdf, [{ t: "JUSTIFICATIVA", b: true }], { y, size: 12, lh: 14, align: "center" }) + 10;
+  y = richPara(pdf, [{ t: $("justif").value.trim() }], { y, size: 11, lh: 14, family: "helvetica" }) + 22;
+  y = richPara(pdf, [{ t: `Boa Vista – RR, ${dataExtenso()}` }], { y, size: 12, lh: 14, align: "right" }) + 26;
+  y = richPara(pdf, [{ t: "______________________________", b: true }], { y, size: 12, lh: 12, align: "center" });
+  richPara(pdf, [{ t: $("vereador").value.trim(), b: true }], { y, size: 10, lh: 12, align: "center" });
+  return pdf.output("arraybuffer");
+}
+$("zipPdf").onclick = () => {
+  if (!items.length) return toast("Nada para baixar ainda");
+  try {
+    const z = new PizZip();
+    for (const it of items) z.file(fileName(it, "pdf"), makePdf(it));
+    save(z.generate({ type: "blob", mimeType: "application/zip" }), `indicacoes_pdf_${$("data").value}.zip`);
+    toast(items.length + " PDFs gerados");
+  } catch (err) { console.error(err); toast("Erro ao gerar os PDFs") }
+};
+function save(blob, name) {
+  const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+}
+$("zipAll").onclick = async () => {
+  if (!items.length) return toast("Nada para baixar ainda");
+  try {
+    const z = new PizZip();
+    for (const it of items) z.file(fileName(it), await makeDocx(it));
+    save(z.generate({ type: "blob", mimeType: "application/zip" }), `indicacoes_${$("data").value}.zip`);
+    toast(items.length + " arquivos gerados");
+  } catch (err) { console.error(err); toast("Erro ao gerar os arquivos") }
+};
+
+renderLocais(); renderServices(); build();
+</script>
+</body>
+</html>
