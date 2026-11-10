@@ -65,7 +65,10 @@
     try {
       const { gabinete } = await call("GET", q("/api/gabinete"));
       const [timbrado, selo] = await Promise.all([gabinete.timbrado ? assetDataUrl("timbrado") : null, gabinete.selo ? assetDataUrl("selo") : null]);
-      window.startApp({ id: gabinete.id, nome: gabinete.nome, config: gabinete.config, assets: { timbrado, selo } });
+      window.startApp({ id: gabinete.id, nome: gabinete.nome, config: gabinete.config, assets: { timbrado, selo },
+        services: gabinete.services, servicesSaved: gabinete.servicesSaved,
+        canManage: me.master || me.role === "admin",
+        api: (method, url, body) => call(method, q(url), body) });
       if (!gabinete.timbrado && (me.master || me.role === "admin")) say("Este gabinete ainda não tem papel timbrado. Envie em Configurações.");
     } catch (x) { emptyState(esc(x.message)) }
   }

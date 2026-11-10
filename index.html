@@ -7,7 +7,7 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap">
 <script src="https://unpkg.com/pizzip@3.1.7/dist/pizzip.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-<script src="app-auth.js?v=5" defer></script>
+<script src="app-auth.js?v=6" defer></script>
 <style>
 /* Layout: coluna de formulário à esquerda, lista de indicações à direita */
 :root {
@@ -160,7 +160,7 @@ button.danger:hover { border-color: #b3261e; color: #b3261e }
     <section class="panel">
       <h2>2. Serviços</h2>
       <div class="services" id="services"></div>
-      <details>
+      <details id="novoServ">
         <summary>Cadastrar novo serviço</summary>
         <div style="display:grid;gap:6px;margin-top:8px">
           <label>Nome curto <input type="text" id="novoNome" placeholder="Ex.: Lombada"></label>
@@ -304,22 +304,6 @@ button.danger:hover { border-color: #b3261e; color: #b3261e }
 // Roda depois que o app-auth.js carrega o gabinete: GAB = { id, nome, config, assets: { timbrado, selo } }
 window.startApp = GAB => {
 const CFG = GAB.config;
-const DEFAULT_SERVICES = [
-  { nome: "Calçada", texto: "PROMOVA A CONSTRUÇÃO DE CALÇADA" },
-  { nome: "Meio-fio e sarjeta", texto: "PROMOVA A CONSTRUÇÃO DE MEIO-FIO E SARJETA" },
-  { nome: "Tapa-buraco", texto: "PROMOVA A OPERAÇÃO TAPA-BURACO" },
-  { nome: "Asfaltamento", texto: "PROMOVA A PAVIMENTAÇÃO ASFÁLTICA" },
-  { nome: "Recapeamento", texto: "PROMOVA O RECAPEAMENTO ASFÁLTICO" },
-  { nome: "Iluminação pública", texto: "PROMOVA A MANUTENÇÃO E AMPLIAÇÃO DA ILUMINAÇÃO PÚBLICA" },
-  { nome: "Drenagem", texto: "PROMOVA A CONSTRUÇÃO DE SISTEMA DE DRENAGEM PLUVIAL" },
-  { nome: "Limpeza e roçagem", texto: "PROMOVA A LIMPEZA E ROÇAGEM" },
-  { nome: "Limpeza de bueiros", texto: "PROMOVA A LIMPEZA E DESOBSTRUÇÃO DOS BUEIROS" },
-  { nome: "Sinalização", texto: "PROMOVA A SINALIZAÇÃO HORIZONTAL E VERTICAL" },
-  { nome: "Faixa de pedestre", texto: "PROMOVA A PINTURA DE FAIXA DE PEDESTRE" },
-  { nome: "Redutor de velocidade", texto: "PROMOVA A INSTALAÇÃO DE REDUTOR DE VELOCIDADE" },
-  { nome: "Poda de árvores", texto: "PROMOVA A PODA DAS ÁRVORES" },
-  { nome: "Abrigo de ônibus", texto: "PROMOVA A INSTALAÇÃO DE ABRIGO NO PONTO DE ÔNIBUS" },
-];
 const MUN = CFG.municipio || "Boa Vista", UF = CFG.uf || "RR", ARTIGO = CFG.artigo || "art. 110, IX";
 const ABERTURA = `QUE A PREFEITURA MUNICIPAL DE ${MUN.toLocaleUpperCase("pt-BR")}, POR MEIO DA SECRETARIA COMPETENTE,`;
 const MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
@@ -332,8 +316,9 @@ const store = {
 };
 const $ = id => document.getElementById(id);
 
-let services = store.get("ind.services", DEFAULT_SERVICES);
-let checked = new Set(store.get("ind.checked", ["Calçada", "Meio-fio e sarjeta"]));
+// Os serviços são do gabinete (ficam no servidor): o admin cadastra e remove, os assessores só marcam.
+let services = GAB.services;
+let checked = new Set(store.get("ind.checked", ["Calçada", "Meio Fio"]));
 let locais = store.get("ind.locais", [{ rua: "Rua Manoel Pereira de Castro", bairro: "Cinturão Verde" }]);
 const fotos = {};        // foto original de cada rua (em memória), por índice
 let edits = {};          // textos editados à mão, por chave
@@ -388,28 +373,58 @@ $("locais").addEventListener("click", e => {
 $("addLocal").onclick = () => { locais.push({ rua: "", bairro: "" }); renderLocais(); $("rua" + (locais.length - 1)).focus() };
 
 /* ---------- Serviços ---------- */
+$("novoServ").hidden = !GAB.canManage;
 function renderServices() {
   $("services").innerHTML = services.map((s, i) => `
     <label title="${esc(s.texto)}"><input type="checkbox" id="sv${i}" data-n="${esc(s.nome)}" ${checked.has(s.nome) ? "checked" : ""}> ${esc(s.nome)}
-      <button type="button" class="del" data-del="${i}" title="Excluir serviço">✕</button></label>`).join("");
+      ${GAB.canManage ? `<button type="button" class="del" data-del="${i}" title="Excluir serviço do gabinete">✕</button>` : ""}</label>`).join("");
 }
 $("services").addEventListener("change", e => {
   const n = e.target.dataset.n; if (!n) return;
   e.target.checked ? checked.add(n) : checked.delete(n);
   store.set("ind.checked", [...checked]); build();
 });
-$("services").addEventListener("click", e => {
-  const i = e.target.dataset.del; if (i == null) return;
-  e.preventDefault(); checked.delete(services[i].nome); services.splice(i, 1);
-  store.set("ind.services", services); renderServices(); build();
+$("services").addEventListener("click", async e => {
+  const i = e.target.dataset.del; if (i == null || !GAB.canManage) return;
+  e.preventDefault();
+  const nome = services[i].nome;
+  if (!confirm(`Excluir o serviço "${nome}"? Ele some para todo o gabinete.`)) return;
+  try {
+    services = (await GAB.api("DELETE", "/api/gabinete/services?nome=" + encodeURIComponent(nome))).gabinete.services;
+    checked.delete(nome); store.set("ind.checked", [...checked]); renderServices(); build(); toast("Serviço excluído");
+  } catch (err) { toast(err.message) }
 });
-$("addServ").onclick = () => {
+$("addServ").onclick = async () => {
   const nome = $("novoNome").value.trim(), texto = up($("novoTexto").value);
   if (!nome || !texto) return toast("Preencha o nome e o texto do serviço");
-  services.push({ nome, texto }); checked.add(nome);
-  store.set("ind.services", services); store.set("ind.checked", [...checked]);
-  $("novoNome").value = $("novoTexto").value = ""; renderServices(); build(); toast("Serviço salvo");
+  try {
+    services = (await GAB.api("POST", "/api/gabinete/services", { nome, texto })).gabinete.services;
+    checked.add(nome); store.set("ind.checked", [...checked]);
+    $("novoNome").value = $("novoTexto").value = ""; renderServices(); build(); toast("Serviço salvo para todo o gabinete");
+  } catch (err) { toast(err.message) }
 };
+// Uma vez só: leva para o servidor a lista que o admin tinha montado neste navegador.
+(async () => {
+  if (!GAB.canManage || GAB.servicesSaved) return;
+  let local = null;
+  try {
+    local = JSON.parse(localStorage.getItem(GAB.id + ":ind.services") || "null");
+    if (!Array.isArray(local)) for (let k = 0; k < localStorage.length; k++) {
+      const key = localStorage.key(k); if (!key.endsWith(":ind.services")) continue;
+      const v = JSON.parse(localStorage.getItem(key)); if (Array.isArray(v) && (!local || v.length > local.length)) local = v;
+    }
+  } catch {}
+  if (!Array.isArray(local) || !local.length) return;
+  // os modelos novos entram junto, depois dos que o admin já tinha
+  // (sem trazer de volta os modelos antigos que o admin tinha excluído)
+  const have = new Set(local.map(s => String(s.nome).toLowerCase()));
+  const antigos = new Set(["iluminação pública", "limpeza de bueiros", "poda de árvores"]);
+  const merged = [...local, ...GAB.services.filter(s => !have.has(s.nome.toLowerCase()) && !antigos.has(s.nome.toLowerCase()))];
+  try {
+    services = (await GAB.api("PUT", "/api/gabinete/services", { services: merged, onlyIfUnsaved: true })).gabinete.services;
+    renderServices(); build();
+  } catch (err) { console.error(err) }
+})();
 
 /* ---------- Montagem das indicações ---------- */
 let items = [];
@@ -527,8 +542,12 @@ function picture(rid, id, cx, cy, anchor) {
   return `<w:r><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="${cx}" cy="${cy}"/><wp:effectExtent l="0" t="0" r="0" b="0"/><wp:docPr id="${id}" name="Foto"/><wp:cNvGraphicFramePr/>${graphic}</wp:inline></w:drawing></w:r>`;
 }
 const b64bytes = dataUrl => Uint8Array.from(atob(dataUrl.split(",")[1]), c => c.charCodeAt(0));
-// Parágrafo de abertura: a indicação vai ao Presidente da Câmara, que encaminha ao Prefeito.
-const abertura = prefeito => `O Vereador que esta subscreve, com amparo no ${ARTIGO} do Regimento Interno, solicita que seja encaminhada ao Excelentíssimo Senhor ${title(prefeito)}, Prefeito do Município de ${MUN}, a seguinte Indicação:`;
+// Parágrafo de abertura, com o nome do Presidente da Câmara em negrito no meio.
+const abertura = (presidente, prefeito) => [
+  { t: `O Vereador que esta subscreve, com amparo no ${ARTIGO} do Regimento Interno, solicito que o Excelentíssimo Senhor ` },
+  { t: up(presidente), b: true },
+  { t: `, Presidente da Câmara Municipal de ${MUN} encaminhe ao Excelentíssimo Senhor ${title(prefeito)}, Prefeito do Município de ${MUN}, a seguinte Indicação:` },
+];
 function dataExtenso() {
   const d = $("data").valueAsDate || new Date();
   const mes = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"][d.getUTCMonth()];
@@ -542,9 +561,9 @@ async function makeDocx(it) {
   const ARIAL = `<w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:cs="Arial"/>`;
   let body = para((TIMBRADO ? picture("rIdTimbrado", 1, 595.3 * EMU, 841.9 * EMU, true) : "") + run("INDICAÇÃO", { i: true, sz: 28, font: ARIAL }), { jc: "center", after: 200 })
     + para(run("Excelentíssimo Senhor"))
-    + para(run(up(presidente), { b: true }))
-    + para(run(`Presidente da Câmara Municipal de ${MUN}`, { b: true }), { after: 240 })
-    + para(run(abertura(prefeito)), { after: 200 })
+    + para(run(up(prefeito), { b: true }))
+    + para(run(`Prefeito de ${MUN}`, { b: true }), { after: 240 })
+    + para(abertura(presidente, prefeito).map(s => run(s.t, { b: s.b })).join(""), { after: 200 })
     + para(run(it.texto.trim(), { b: true, sz: 20 }), { after: 200 });
   if (temFoto) body += para(picture("rIdFoto", 2, 452 * EMU, 211 * EMU, false), { jc: "center", after: 120 });
   body += para(run("JUSTIFICATIVA", { b: true }), { jc: "center", after: 200, before: temFoto ? 0 : 240 })
@@ -605,9 +624,9 @@ function makePdf(it) {
   pdf.setFont("helvetica", "italic"); pdf.setFontSize(14);
   pdf.text("INDICAÇÃO", 297.6, 163, { align: "center" });
   let y = richPara(pdf, [{ t: "Excelentíssimo Senhor" }], { y: 183, size: 12, lh: 13.5 });
-  y = richPara(pdf, [{ t: up(presidente), b: true }], { y, size: 12, lh: 13.5 });
-  y = richPara(pdf, [{ t: `Presidente da Câmara Municipal de ${MUN}`, b: true }], { y, size: 12, lh: 13.5 }) + 12;
-  y = richPara(pdf, [{ t: abertura(prefeito) }], { y, size: 12, lh: 14 }) + 10;
+  y = richPara(pdf, [{ t: up(prefeito), b: true }], { y, size: 12, lh: 13.5 });
+  y = richPara(pdf, [{ t: `Prefeito de ${MUN}`, b: true }], { y, size: 12, lh: 13.5 }) + 12;
+  y = richPara(pdf, abertura(presidente, prefeito), { y, size: 12, lh: 14 }) + 10;
   y = richPara(pdf, [{ t: it.texto.trim(), b: true }], { y, size: 10, lh: 11.5 });
   if (fotos[it.li]) {
     pdf.addImage(composePhoto(it.li).toDataURL("image/jpeg", 0.85), "JPEG", (595.28 - 452) / 2, y - 2, 452, 211);

@@ -82,11 +82,42 @@ const DEFAULT_CONFIG = {
   vereador: "", prefeito: "", presidente: "", municipio: "Boa Vista", uf: "RR", artigo: "art. 110, IX", seloPos: "inferior",
   justif: "A indicação ora apresentada visa reforçar a solicitação dos moradores, para que possa melhorar as condições de tráfego de todos que transitam pela via, assim sendo, solicito que seja incluída no cronograma de obras do município a realização desse serviço. Certo de contar com o atendimento a esta indicação, reitero os meus votos de estima e apreço.",
 };
+// Modelos de serviço que todo gabinete novo recebe. O admin do gabinete pode adicionar e remover;
+// os assessores só usam.
+const DEFAULT_SERVICES = [
+  { nome: "Calçada", texto: "PROMOVA A CONSTRUÇÃO DE CALÇADA" },
+  { nome: "Tapa-buraco", texto: "PROMOVA A OPERAÇÃO TAPA-BURACO" },
+  { nome: "Faixa de pedestre", texto: "PROMOVA A PINTURA DE FAIXA DE PEDESTRE" },
+  { nome: "Redutor de velocidade", texto: "PROMOVA A INSTALAÇÃO DE REDUTOR DE VELOCIDADE" },
+  { nome: "Abrigo de ônibus", texto: "PROMOVA A INSTALAÇÃO DE ABRIGO NO PONTO DE ÔNIBUS" },
+  { nome: "Drenagem", texto: "PROMOVA A CONSTRUÇÃO DE SISTEMA DE DRENAGEM PLUVIAL" },
+  { nome: "Meio Fio", texto: "PROMOVA A CONSTRUÇÃO DE MEIO-FIO" },
+  { nome: "Sinalização", texto: "PROMOVA A SINALIZAÇÃO HORIZONTAL E VERTICAL" },
+  { nome: "Recapeamento Asfáltico", texto: "PROMOVA O RECAPEAMENTO ASFÁLTICO" },
+  { nome: "Serviço de Limpeza", texto: "PROMOVA O SERVIÇO DE LIMPEZA" },
+  { nome: "Pavimentação Asfáltica", texto: "PROMOVA A PAVIMENTAÇÃO ASFÁLTICA" },
+  { nome: "Manutenção de Calçada", texto: "PROMOVA A MANUTENÇÃO DA CALÇADA" },
+  { nome: "Identificação de Placas", texto: "PROMOVA A INSTALAÇÃO DE PLACAS DE IDENTIFICAÇÃO" },
+  { nome: "Construção de Galerias", texto: "PROMOVA A CONSTRUÇÃO DE GALERIAS PLUVIAIS" },
+  { nome: "Instalação de Semáforo", texto: "PROMOVA A INSTALAÇÃO DE SEMÁFORO" },
+  { nome: "Revitalização de Faixa de Pedestre", texto: "PROMOVA A REVITALIZAÇÃO DA FAIXA DE PEDESTRE" },
+  { nome: "Revitalização de Praça", texto: "PROMOVA A REVITALIZAÇÃO DA PRAÇA" },
+  { nome: "Iluminação pública", texto: "PROMOVA A MANUTENÇÃO E AMPLIAÇÃO DA ILUMINAÇÃO PÚBLICA" },
+  { nome: "Limpeza de bueiros", texto: "PROMOVA A LIMPEZA E DESOBSTRUÇÃO DOS BUEIROS" },
+  { nome: "Poda de árvores", texto: "PROMOVA A PODA DAS ÁRVORES" },
+];
+const MAX_SERVICES = 200;
+function cleanService(s) {
+  const nome = String((s && s.nome) || "").trim().replace(/\s+/g, " ").slice(0, 80);
+  const texto = String((s && s.texto) || "").trim().replace(/\s+/g, " ").toLocaleUpperCase("pt-BR").slice(0, 400);
+  return nome && texto ? { nome, texto } : null;
+}
 const ASSET_KINDS = ["timbrado", "selo"];
 const assetPath = (gid, kind) => path.join(GABS_DIR, gid, kind + ".png");
 const hasAsset = (gid, kind) => fs.existsSync(assetPath(gid, kind));
 const publicGab = g => ({ id: g.id, nome: g.nome, ativo: g.ativo !== false, createdAt: g.createdAt,
-  config: { ...DEFAULT_CONFIG, ...g.config }, timbrado: hasAsset(g.id, "timbrado"), selo: hasAsset(g.id, "selo") });
+  config: { ...DEFAULT_CONFIG, ...g.config }, timbrado: hasAsset(g.id, "timbrado"), selo: hasAsset(g.id, "selo"),
+  services: g.services || DEFAULT_SERVICES, servicesSaved: Array.isArray(g.services) });
 function cleanConfig(input) {
   const out = {};
   for (const [k, max] of Object.entries(CONFIG_FIELDS)) if (input[k] != null) out[k] = String(input[k]).trim().slice(0, max);
@@ -344,6 +375,29 @@ async function api(req, res, url) {
       return send(res, 200, fs.readFileSync(assetPath(g.id, am[1])), { "Content-Type": "image/png", "Cache-Control": "no-cache" });
     }
     if (!canManage(me)) return json(res, 403, { error: "Só o administrador do gabinete pode mudar as configurações." });
+    if (url.pathname === "/api/gabinete/services") {
+      const list = (g.services || DEFAULT_SERVICES).map(s => ({ ...s }));
+      const b = req.method === "DELETE" ? {} : await readBody(req);
+      if (req.method === "PUT") {
+        // usado uma vez para trazer a lista que o admin tinha montado no próprio navegador
+        if (b.onlyIfUnsaved && Array.isArray(g.services)) return json(res, 200, { gabinete: publicGab(g) });
+        const seen = new Set(), clean = [];
+        for (const s of Array.isArray(b.services) ? b.services : []) { const c = cleanService(s); if (c && !seen.has(c.nome.toLowerCase())) { seen.add(c.nome.toLowerCase()); clean.push(c) } }
+        if (!clean.length) return json(res, 400, { error: "A lista de serviços está vazia." });
+        g.services = clean.slice(0, MAX_SERVICES);
+      } else if (req.method === "POST") {
+        const c = cleanService(b);
+        if (!c) return json(res, 400, { error: "Preencha o nome e o texto do serviço." });
+        if (list.some(s => s.nome.toLowerCase() === c.nome.toLowerCase())) return json(res, 400, { error: "Já existe um serviço com esse nome." });
+        if (list.length >= MAX_SERVICES) return json(res, 400, { error: "Limite de serviços atingido." });
+        g.services = [...list, c];
+      } else if (req.method === "DELETE") {
+        const nome = String(url.searchParams.get("nome") || "").toLowerCase();
+        g.services = list.filter(s => s.nome.toLowerCase() !== nome);
+      } else return json(res, 404, { error: "Não encontrado." });
+      writeGabs(gabs);
+      return json(res, 200, { gabinete: publicGab(g) });
+    }
     if (route === "PUT /api/gabinete") {
       const b = await readBody(req);
       g.config = { ...DEFAULT_CONFIG, ...g.config, ...cleanConfig(b.config || {}) };
