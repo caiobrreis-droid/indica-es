@@ -7,7 +7,7 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap">
 <script src="https://unpkg.com/pizzip@3.1.7/dist/pizzip.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-<script src="app-auth.js?v=8" defer></script>
+<script src="app-auth.js?v=9" defer></script>
 <style>
 /* Layout: coluna de formulário à esquerda, lista de indicações à direita */
 :root {
@@ -120,6 +120,10 @@ button.danger:hover { border-color: #b3261e; color: #b3261e }
   background: #fbeceb; color: #8c1d18; border: 1px solid #f2b8b5; font-size: 14px }
 .warnbar code { background: rgba(0,0,0,.06); padding: 1px 5px; border-radius: 4px }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .warnbar { background: #3a2220; color: #f2b8b5; border-color: #6b2e2a } }
+.bookmarklet { display: inline-block; padding: 9px 16px; border-radius: 99px; background: var(--accent); color: var(--accent-ink);
+  font-weight: 600; text-decoration: none; cursor: grab; box-shadow: 0 2px 6px rgba(0,0,0,.2) }
+.steps { margin: 0; padding-left: 20px; display: grid; gap: 6px; font-size: 14px }
+.steps a, .dbody a:not(.bookmarklet) { color: var(--accent) }
 canvas.preview { cursor: zoom-in }
 canvas.preview:hover { outline: 2px solid var(--accent); outline-offset: 2px }
 dialog.crop { width: min(920px, calc(100vw - 32px)) }
@@ -214,6 +218,7 @@ dialog.crop { width: min(920px, calc(100vw - 32px)) }
       <button type="button" id="copyAll">Copiar textos</button>
       <button type="button" class="primary" id="zipAll">Baixar todas em Word (.zip)</button>
       <button type="button" class="primary" id="zipPdf">Baixar todas em PDF (.zip)</button>
+      <button type="button" id="btnSapl" title="Depois de assinar, envie todas de uma vez ao SAPL">📤 Enviar ao SAPL</button>
     </div>
     <div class="list" id="list"></div>
   </section>
@@ -301,6 +306,7 @@ dialog.crop { width: min(920px, calc(100vw - 32px)) }
       <label>Município <input type="text" id="cfMunicipio" placeholder="Ex.: Boa Vista"></label>
       <label>UF <input type="text" id="cfUf" maxlength="2" placeholder="RR"></label>
       <label class="full">Artigo do Regimento Interno <input type="text" id="cfArtigo" placeholder="Ex.: art. 110, IX"></label>
+      <label class="full">Endereço do SAPL da Câmara <input type="text" id="cfSapl" placeholder="https://sapl.boavista.rr.leg.br" inputmode="url"></label>
       <label class="full">Justificativa padrão <textarea id="cfJustif" rows="5"></textarea></label>
       <p class="formerr full" id="cfErr" role="alert"></p>
       <div class="full"><button type="submit" class="primary">Salvar configurações</button></div>
@@ -317,6 +323,29 @@ dialog.crop { width: min(920px, calc(100vw - 32px)) }
     <p class="formerr" id="cpErr" role="alert"></p>
     <div><button type="submit" class="primary">Salvar nova senha</button></div>
   </form>
+</dialog>
+
+<dialog id="dlgSapl" aria-labelledby="dlgSaplT">
+  <div class="dhead"><h3 id="dlgSaplT">Enviar em lote ao SAPL</h3><button type="button" class="small" data-close>Fechar</button></div>
+  <div class="dbody">
+    <p class="hint" style="font-size:14px">Depois de assinar os PDFs com o token, você envia todos de uma vez ao SAPL: o sistema salva e envia cada proposição ao protocolo, uma depois da outra, como se fossem os botões "Salvar" e "Enviar".</p>
+    <div>
+      <h2 style="margin-bottom:8px">1. Só na primeira vez</h2>
+      <p class="hint" style="font-size:14px;margin-bottom:10px">Mostre a barra de favoritos do navegador (Ctrl+Shift+B) e <b>arraste o botão abaixo para ela</b>.</p>
+      <a class="bookmarklet" id="saplBm" href="#" draggable="true">📤 Enviar ao SAPL</a>
+      <p class="hint" style="margin-top:8px">Clicar nele aqui não faz nada: ele só funciona dentro do SAPL.</p>
+    </div>
+    <div>
+      <h2 style="margin-bottom:8px">2. Para enviar</h2>
+      <ol class="steps">
+        <li>Abra o <a id="saplLink" href="https://sapl.boavista.rr.leg.br" target="_blank" rel="noopener">SAPL</a> e entre com o usuário do vereador.</li>
+        <li>Clique em <b>📤 Enviar ao SAPL</b> na barra de favoritos. Abre um painel por cima do SAPL.</li>
+        <li>Escolha ou arraste os PDFs <b>já assinados</b>. A ementa de cada um é lida do próprio PDF: confira.</li>
+        <li>Clique em <b>Salvar e enviar</b> e acompanhe a situação de cada um.</li>
+      </ol>
+    </div>
+    <p class="hint">Sua senha e o token não passam pelo Gerador: quem envia é o seu navegador, já logado no SAPL. Na primeira vez, teste com um arquivo só. O painel lembra o que já foi enviado e pula repetidos.</p>
+  </div>
 </dialog>
 
 <dialog id="dlgCrop" class="crop" aria-labelledby="dlgCropT">
@@ -795,6 +824,14 @@ $("zipAll").onclick = async () => {
     toast(items.length + " arquivos gerados");
   } catch (err) { console.error(err); toast("Erro ao gerar os arquivos") }
 };
+
+/* ---------- Envio em lote ao SAPL ---------- */
+// O botão de favoritos carrega o sapl-lote.js deste site dentro da página do SAPL.
+$("saplBm").href = `javascript:(()=>{var s=document.createElement('script');s.src='${location.origin}/sapl-lote.js?t='+Date.now();document.body.appendChild(s)})()`;
+$("saplBm").onclick = e => { e.preventDefault(); toast("Arraste este botão para a barra de favoritos") };
+const SAPL_URL = CFG.sapl || "https://sapl.boavista.rr.leg.br";
+$("saplLink").href = SAPL_URL; $("saplLink").textContent = "SAPL (" + SAPL_URL.replace(/^https?:\/\//, "") + ")";
+$("btnSapl").onclick = () => $("dlgSapl").showModal();
 
 /* ---------- Tamanho da foto na folha ---------- */
 // Mede a primeira indicação com foto (gerando o PDF dela) e avisa se o texto passar do rodapé.

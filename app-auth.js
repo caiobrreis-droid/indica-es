@@ -151,7 +151,7 @@
   });
 
   /* ---------- Configurações do gabinete ---------- */
-  const CF = { vereador: "cfVereador", prefeito: "cfPrefeito", presidente: "cfPresidente", municipio: "cfMunicipio", uf: "cfUf", artigo: "cfArtigo", justif: "cfJustif", seloPos: "cfSeloPos" };
+  const CF = { vereador: "cfVereador", prefeito: "cfPrefeito", presidente: "cfPresidente", municipio: "cfMunicipio", uf: "cfUf", artigo: "cfArtigo", justif: "cfJustif", seloPos: "cfSeloPos", sapl: "cfSapl" };
   function thumb(kind, has) {
     const el = $(kind === "timbrado" ? "thTimbrado" : "thSelo");
     const src = q("/api/gabinete/asset/" + kind);

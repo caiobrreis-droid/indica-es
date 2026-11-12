@@ -75,11 +75,12 @@ const DUMMY_HASH = hashPassword(crypto.randomBytes(8).toString("hex"));
 
 /* ---------- Gabinetes ---------- */
 const CONFIG_FIELDS = {
-  vereador: 120, prefeito: 120, presidente: 120, municipio: 80, uf: 2, artigo: 80, justif: 3000,
+  vereador: 120, prefeito: 120, presidente: 120, municipio: 80, uf: 2, artigo: 80, justif: 3000, sapl: 200,
 };
 const SELO_POS = ["inferior", "superior"];   // canto da foto onde vai o selo (sempre à esquerda)
 const DEFAULT_CONFIG = {
   vereador: "", prefeito: "", presidente: "", municipio: "Boa Vista", uf: "RR", artigo: "art. 110, IX", seloPos: "inferior",
+  sapl: "https://sapl.boavista.rr.leg.br",
   justif: "A indicação ora apresentada visa reforçar a solicitação dos moradores, para que possa melhorar as condições de tráfego de todos que transitam pela via, assim sendo, solicito que seja incluída no cronograma de obras do município a realização desse serviço. Certo de contar com o atendimento a esta indicação, reitero os meus votos de estima e apreço.",
 };
 // Modelos de serviço que todo gabinete novo recebe. O admin do gabinete pode adicionar e remover;
@@ -123,6 +124,8 @@ function cleanConfig(input) {
   for (const [k, max] of Object.entries(CONFIG_FIELDS)) if (input[k] != null) out[k] = String(input[k]).trim().slice(0, max);
   if (out.uf) out.uf = out.uf.toUpperCase();
   if (SELO_POS.includes(input.seloPos)) out.seloPos = input.seloPos;
+  if (out.sapl != null && out.sapl && !/^https:\/\/[^\s/]+\.[^\s/]+\/?$/i.test(out.sapl)) delete out.sapl;   // só endereço https do SAPL
+  if (out.sapl) out.sapl = out.sapl.replace(/\/$/, "");
   return out;
 }
 
@@ -255,7 +258,9 @@ function readBody(req, limit = 1e5) {
 
 const TYPES = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".png": "image/png" };
 // Só estes arquivos são servidos. O resto (server.js, data/) nunca sai do servidor.
-const PUBLIC = { "/login": "login.html", "/login.html": "login.html" };
+// sapl-lote.js é carregado pela página do SAPL (outro site, sem o nosso login), então é público.
+// Ele não tem nenhum dado: só o código do painel de envio em lote.
+const PUBLIC = { "/login": "login.html", "/login.html": "login.html", "/sapl-lote.js": "sapl-lote.js" };
 const PRIVATE = { "/": "index.html", "/index.html": "index.html", "/app-auth.js": "app-auth.js" };
 
 function serveFile(res, file) {
@@ -475,7 +480,7 @@ http.createServer(async (req, res) => {
     if (req.method !== "GET" && req.method !== "HEAD") return send(res, 405, "Método não permitido");
 
     if (PUBLIC[url.pathname]) {
-      if (readSession(req)) return send(res, 302, "", { Location: "/" });
+      if (url.pathname.startsWith("/login") && readSession(req)) return send(res, 302, "", { Location: "/" });
       return serveFile(res, PUBLIC[url.pathname]);
     }
     if (PRIVATE[url.pathname] || !path.extname(url.pathname)) {

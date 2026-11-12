@@ -14,6 +14,17 @@ Sistema para montar as indicações do Gabinete do Vereador Júlio Cézar Medeir
 
 A data, a justificativa e os nomes do prefeito, do presidente da Câmara e do vereador podem ser alterados na seção **3. Documento**. O navegador guarda essas escolhas.
 
+## Envio em lote ao SAPL
+
+Depois de assinar os PDFs com o token do vereador, o botão **📤 Enviar ao SAPL** (ao lado de "Baixar todas em PDF") explica como enviar todos de uma vez:
+
+1. Só na primeira vez: arraste o botão **📤 Enviar ao SAPL** da janela para a barra de favoritos do navegador.
+2. Abra o SAPL, entre com o usuário do vereador e clique no favorito. Abre um painel por cima do SAPL.
+3. Escolha os PDFs assinados. A ementa de cada um é lida do próprio PDF (o trecho "QUE A PREFEITURA..."); confira e corrija se precisar.
+4. **Salvar e enviar**: para cada PDF, o painel faz o mesmo que os botões "Salvar" e "Enviar" do SAPL, um depois do outro, e mostra o número de cada proposição.
+
+O painel (`sapl-lote.js`) roda dentro do SAPL com o login que já está aberto: senha e token não passam pelo Gerador. Ele lembra, no navegador, quais arquivos já foram enviados e pula os repetidos. O endereço do SAPL de cada gabinete fica em **Configurações**.
+
 ## Gabinetes, login e usuários
 
 O sistema atende vários gabinetes numa hospedagem só. Cada gabinete tem o próprio papel timbrado, selo, textos e equipe, e um gabinete nunca vê os dados de outro.
@@ -54,6 +65,7 @@ Abre em http://localhost:3000. Sem `ADMIN_PASSWORD`, o servidor cria uma senha p
 | `server.js` | Servidor: login, usuários e entrega das páginas (sem dependências externas) |
 | `login.html` | Tela de login |
 | `index.html` | O gerador |
+| `sapl-lote.js` | Painel de envio em lote que roda dentro do SAPL (público, sem dados) |
 | `app-auth.js` | Barra do usuário, gabinetes, configurações, troca de senha e cadastro de usuários |
 | `indicacoes-assets.js` | Timbrado e selo originais do gabinete do Júlio Cézar, usados só para criar o primeiro gabinete |
 | `exemplo-indicacao-gerada.png` | Exemplo de indicação gerada |
