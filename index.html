@@ -7,7 +7,7 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap">
 <script src="https://unpkg.com/pizzip@3.1.7/dist/pizzip.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-<script src="app-auth.js?v=6" defer></script>
+<script src="app-auth.js?v=7" defer></script>
 <style>
 /* Layout: coluna de formulário à esquerda, lista de indicações à direita */
 :root {
@@ -117,6 +117,15 @@ button.danger:hover { border-color: #b3261e; color: #b3261e }
   background: #fbeceb; color: #8c1d18; border: 1px solid #f2b8b5; font-size: 14px }
 .warnbar code { background: rgba(0,0,0,.06); padding: 1px 5px; border-radius: 4px }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .warnbar { background: #3a2220; color: #f2b8b5; border-color: #6b2e2a } }
+canvas.preview { cursor: zoom-in }
+canvas.preview:hover { outline: 2px solid var(--accent); outline-offset: 2px }
+dialog.crop { width: min(920px, calc(100vw - 32px)) }
+.cropcv { width: 100%; aspect-ratio: 1600 / 746; display: block; border-radius: 6px; border: 1px solid var(--line);
+  cursor: grab; touch-action: none; user-select: none }
+.cropcv.dragging { cursor: grabbing }
+.zoomrow { display: grid; grid-template-columns: auto 1fr 48px; align-items: center; gap: 10px; color: var(--ink) }
+.zoomrow input { width: 100%; accent-color: var(--accent) }
+.zoomrow span { font-variant-numeric: tabular-nums; color: var(--muted); text-align: right }
 .sitefoot { text-align: center; color: var(--muted); font-size: 13px; padding: 8px 16px 28px }
 .sitefoot strong { color: var(--ink); font-weight: 600 }
 </style>
@@ -300,6 +309,24 @@ button.danger:hover { border-color: #b3261e; color: #b3261e }
   </form>
 </dialog>
 
+<dialog id="dlgCrop" class="crop" aria-labelledby="dlgCropT">
+  <div class="dhead"><h3 id="dlgCropT">Ajustar recorte da foto</h3><button type="button" class="small" data-close>Cancelar</button></div>
+  <div class="dbody">
+    <p class="hint">Arraste a foto para escolher o que aparece. Use o zoom para aproximar. O quadro mostra exatamente como vai sair na indicação.</p>
+    <canvas id="cropCanvas" class="cropcv" aria-label="Prévia do recorte. Arraste para mover a foto."></canvas>
+    <label class="zoomrow">Zoom
+      <input type="range" id="cropZoom" min="1" max="5" step="0.01" value="1">
+      <span id="cropZoomTxt">100%</span>
+    </label>
+    <div class="toolbar">
+      <button type="button" id="cropReset">Voltar ao automático</button>
+      <span style="flex:1"></span>
+      <button type="button" data-close>Cancelar</button>
+      <button type="button" class="primary" id="cropApply">Aplicar</button>
+    </div>
+  </div>
+</dialog>
+
 <script>
 // Roda depois que o app-auth.js carrega o gabinete: GAB = { id, nome, config, assets: { timbrado, selo } }
 window.startApp = GAB => {
@@ -347,6 +374,7 @@ function renderLocais() {
         ${fotos[i] ? `<img src="${fotos[i].src}" alt="">` : ""}
         <input type="file" accept="image/*" id="foto${i}" data-foto="${i}" hidden>
         <button type="button" class="small" onclick="document.getElementById('foto${i}').click()">${fotos[i] ? "Trocar foto" : "Adicionar foto da rua"}</button>
+        ${fotos[i] ? `<button type="button" class="small" data-crop="${i}">Ajustar recorte</button>${fotos[i].crop ? `<span>ajustado</span>` : ""}` : ""}
         ${fotos[i] ? "" : "<span>sem foto</span>"}
       </div>
     </div>`).join("");
@@ -363,6 +391,7 @@ $("locais").addEventListener("change", e => {
   img.src = URL.createObjectURL(e.target.files[0]);
 });
 $("locais").addEventListener("click", e => {
+  if (e.target.dataset.crop != null) return openCrop(e.target.dataset.crop);
   const i = e.target.dataset.rm; if (i == null) return;
   locais.splice(i, 1);
   const rest = Object.keys(fotos).map(Number).sort((a, b) => a - b);   // reindexa as fotos
@@ -445,7 +474,7 @@ function renderList() {
   if (!items.length) { $("list").innerHTML = `<div class="empty">Preencha uma rua e marque pelo menos um serviço.</div>`; return }
   const shown = new Set();
   $("list").innerHTML = items.map((it, i) => {
-    const prev = fotos[it.li] && !shown.has(it.li) ? (shown.add(it.li), `<canvas class="preview" data-prev="${it.li}"></canvas>`) : "";
+    const prev = fotos[it.li] && !shown.has(it.li) ? (shown.add(it.li), `<canvas class="preview" data-prev="${it.li}" role="button" tabindex="0" title="Clique para ajustar o zoom e o recorte" aria-label="Ajustar recorte da foto"></canvas>`) : "";
     return `
     <div class="card">
       <div class="meta">${esc(it.servico)} · ${esc(it.rua)}
@@ -460,7 +489,9 @@ function renderList() {
   });
 }
 $("list").addEventListener("input", e => { const i = e.target.dataset.i; if (i == null) return; items[i].texto = e.target.value; edits[items[i].key] = e.target.value });
+$("list").addEventListener("keydown", e => { if (e.target.dataset.prev != null && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); openCrop(e.target.dataset.prev) } });
 $("list").addEventListener("click", async e => {
+  if (e.target.dataset.prev != null) return openCrop(e.target.dataset.prev);
   if (e.target.dataset.copy != null) copy(items[e.target.dataset.copy].texto);
   if (e.target.dataset.dl != null) {
     const it = items[e.target.dataset.dl];
@@ -489,12 +520,22 @@ function loadAsset(name) {
 loadAsset("selo").onload = () => renderList();
 const TIMBRADO = GAB.assets.timbrado;   // página A4 inteira em PNG, ou null
 
-function composePhoto(li) {
+// Recorte: a foto sempre preenche o quadro. z = zoom (1 = automático), fx/fy = ponto da foto
+// que fica no centro do quadro (0 a 1). Sem ajuste, fica centralizada como antes.
+const AUTO_CROP = { z: 1, fx: 0.5, fy: 0.5 };
+function cropGeom(img, crop = img.crop || AUTO_CROP) {
+  const s = Math.max(PHOTO_W / img.naturalWidth, PHOTO_H / img.naturalHeight) * crop.z;
+  const w = img.naturalWidth * s, h = img.naturalHeight * s;
+  // não deixa sobrar faixa vazia: o centro só anda até a borda da foto encostar na do quadro
+  const fx = Math.min(1 - PHOTO_W / 2 / w, Math.max(PHOTO_W / 2 / w, crop.fx));
+  const fy = Math.min(1 - PHOTO_H / 2 / h, Math.max(PHOTO_H / 2 / h, crop.fy));
+  return { s, w, h, fx, fy, x: PHOTO_W / 2 - fx * w, y: PHOTO_H / 2 - fy * h };
+}
+function composePhoto(li, crop) {
   const c = document.createElement("canvas"); c.width = PHOTO_W; c.height = PHOTO_H;
   const ctx = c.getContext("2d"), img = fotos[li];
-  const s = Math.max(PHOTO_W / img.naturalWidth, PHOTO_H / img.naturalHeight);   // preenche e corta o excesso
-  const w = img.naturalWidth * s, h = img.naturalHeight * s;
-  ctx.drawImage(img, (PHOTO_W - w) / 2, (PHOTO_H - h) / 2, w, h);
+  const g = cropGeom(img, crop);
+  ctx.drawImage(img, g.x, g.y, g.w, g.h);
   if ($("usaPlaca").checked) drawPlaca(ctx, locais[li]);
   const selo = loadAsset("selo");
   if ($("usaSelo").checked && selo.complete && selo.naturalWidth) {
@@ -505,6 +546,79 @@ function composePhoto(li) {
   }
   return c;
 }
+/* Janela de ajuste do recorte: arrastar move, zoom pelo controle, pela rodinha ou com dois dedos */
+let ed = null;   // { li, crop } enquanto a janela está aberta; só vale ao clicar em Aplicar
+function openCrop(li) {
+  if (!fotos[li]) return;
+  ed = { li, crop: { ...(fotos[li].crop || AUTO_CROP) } };
+  $("dlgCropT").textContent = "Ajustar recorte: " + (locais[li].rua.trim() || "foto da rua");
+  $("dlgCrop").showModal();
+  drawCrop();
+}
+let cropFrame = 0;
+function drawCrop() {
+  if (!ed) return;
+  const g = cropGeom(fotos[ed.li], ed.crop);
+  ed.crop.fx = g.fx; ed.crop.fy = g.fy;   // guarda já limitado às bordas
+  $("cropZoom").value = ed.crop.z; $("cropZoomTxt").textContent = Math.round(ed.crop.z * 100) + "%";
+  cancelAnimationFrame(cropFrame);
+  cropFrame = requestAnimationFrame(() => {
+    const cv = $("cropCanvas"); cv.width = PHOTO_W; cv.height = PHOTO_H;
+    cv.getContext("2d").drawImage(composePhoto(ed.li, ed.crop), 0, 0);
+  });
+}
+function setZoom(z) { if (ed) { ed.crop.z = Math.min(5, Math.max(1, z)); drawCrop() } }
+$("cropZoom").addEventListener("input", e => setZoom(+e.target.value));
+$("cropCanvas").addEventListener("wheel", e => { e.preventDefault(); if (ed) setZoom(ed.crop.z * Math.pow(1.0015, -e.deltaY)) }, { passive: false });
+const ptrs = new Map(); let drag = null;
+$("cropCanvas").addEventListener("pointerdown", e => {
+  if (!ed) return;
+  e.currentTarget.setPointerCapture(e.pointerId);
+  ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  drag = { pts: new Map(ptrs), fx: ed.crop.fx, fy: ed.crop.fy, z: ed.crop.z };
+  e.currentTarget.classList.add("dragging");
+});
+$("cropCanvas").addEventListener("pointermove", e => {
+  if (!ed || !drag || !ptrs.has(e.pointerId)) return;
+  ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  const k = PHOTO_W / e.currentTarget.clientWidth;   // pixels da tela -> pixels da foto final
+  const ids = [...ptrs.keys()].filter(id => drag.pts.has(id));
+  if (ids.length >= 2) {   // pinça: aproxima/afasta
+    const [a, b] = ids, d0 = Math.hypot(drag.pts.get(a).x - drag.pts.get(b).x, drag.pts.get(a).y - drag.pts.get(b).y);
+    const d1 = Math.hypot(ptrs.get(a).x - ptrs.get(b).x, ptrs.get(a).y - ptrs.get(b).y);
+    if (d0 > 10) setZoom(drag.z * d1 / d0);
+    return;
+  }
+  const p0 = drag.pts.get(e.pointerId); if (!p0) return;
+  const g = cropGeom(fotos[ed.li], { ...ed.crop, fx: drag.fx, fy: drag.fy });
+  ed.crop.fx = drag.fx - (e.clientX - p0.x) * k / g.w;
+  ed.crop.fy = drag.fy - (e.clientY - p0.y) * k / g.h;
+  drawCrop();
+});
+const endDrag = e => {
+  ptrs.delete(e.pointerId);
+  $("cropCanvas").classList.remove("dragging");
+  // recomeça a partir da posição atual com os dedos que ficaram
+  drag = ptrs.size && ed ? { pts: new Map(ptrs), fx: ed.crop.fx, fy: ed.crop.fy, z: ed.crop.z } : null;
+};
+["pointerup", "pointercancel", "lostpointercapture"].forEach(t => $("cropCanvas").addEventListener(t, endDrag));
+$("cropCanvas").addEventListener("keydown", e => {   // teclado: setas movem, + e - fazem zoom
+  if (!ed) return;
+  const step = 0.02 / ed.crop.z, m = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] }[e.key];
+  if (m) { e.preventDefault(); ed.crop.fx += m[0]; ed.crop.fy += m[1]; drawCrop() }
+  if (e.key === "+" || e.key === "=") setZoom(ed.crop.z * 1.1);
+  if (e.key === "-") setZoom(ed.crop.z / 1.1);
+});
+$("cropCanvas").tabIndex = 0;
+$("cropReset").onclick = () => { if (ed) { ed.crop = { ...AUTO_CROP }; drawCrop() } };
+$("cropApply").onclick = () => {
+  if (!ed) return;
+  const img = fotos[ed.li], c = ed.crop;
+  if (c.z === 1 && Math.abs(c.fx - 0.5) < 1e-3 && Math.abs(c.fy - 0.5) < 1e-3) delete img.crop; else img.crop = { ...c };
+  ed = null; $("dlgCrop").close(); renderLocais(); renderList(); toast("Recorte aplicado");
+};
+$("dlgCrop").addEventListener("close", () => { ed = null; ptrs.clear(); drag = null });
+
 // Placa de rua no canto superior direito, no estilo das placas de Boa Vista
 function drawPlaca(ctx, l) {
   const W = PHOTO_W * 0.25, H = W * 0.5, x = PHOTO_W - W - 14, y = 14;
