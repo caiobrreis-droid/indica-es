@@ -7,7 +7,7 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap">
 <script src="https://unpkg.com/pizzip@3.1.7/dist/pizzip.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-<script src="app-auth.js?v=9" defer></script>
+<script src="app-auth.js?v=10" defer></script>
 <style>
 /* Layout: coluna de formulário à esquerda, lista de indicações à direita */
 :root {
@@ -130,7 +130,7 @@ dialog.crop { width: min(920px, calc(100vw - 32px)) }
 .cropcv { width: 100%; aspect-ratio: 1600 / 746; display: block; border-radius: 6px; border: 1px solid var(--line);
   cursor: grab; touch-action: none; user-select: none }
 .cropcv.dragging { cursor: grabbing }
-.zoomrow { display: grid; grid-template-columns: auto 1fr 48px; align-items: center; gap: 10px; color: var(--ink) }
+.zoomrow { display: grid; grid-template-columns: 112px 1fr 48px; align-items: center; gap: 10px; color: var(--ink) }
 .zoomrow input { width: 100%; accent-color: var(--accent) }
 .zoomrow span { font-variant-numeric: tabular-nums; color: var(--muted); text-align: right }
 .sitefoot { text-align: center; color: var(--muted); font-size: 13px; padding: 8px 16px 28px }
@@ -353,6 +353,11 @@ dialog.crop { width: min(920px, calc(100vw - 32px)) }
   <div class="dbody">
     <p class="hint">Arraste a foto para escolher o que aparece. Use o zoom para aproximar. O quadro mostra exatamente como vai sair na indicação.</p>
     <canvas id="cropCanvas" class="cropcv" aria-label="Prévia do recorte. Arraste para mover a foto."></canvas>
+    <label class="zoomrow">Altura na folha
+      <input type="range" id="cropAlt" min="70" max="160" step="5" value="100" aria-describedby="cropAltDica">
+      <span id="cropAltTxt">100%</span>
+    </label>
+    <p class="hint" id="cropAltDica">Deixa a foto mais alta no Word e no PDF (a largura não muda). Vale para todas as fotos.</p>
     <label class="zoomrow">Zoom
       <input type="range" id="cropZoom" min="1" max="5" step="0.01" value="1">
       <span id="cropZoomTxt">100%</span>
@@ -376,11 +381,14 @@ const MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.doc
 // Foto na folha: largura fixa de 452 pt (a linha toda); a altura muda com o "Tamanho da foto na folha".
 // 100% = 211 pt, a mesma proporção da indicação de referência.
 const FOTO_LARG = 452, FOTO_ALT_PADRAO = 211, PHOTO_W = 1600;
-let fotoAlt = FOTO_ALT_PADRAO, PHOTO_H = 746;
+let fotoAlt = FOTO_ALT_PADRAO, PHOTO_H = 746, fotoTamPct = 100;
 function setFotoTam(pct) {
+  fotoTamPct = pct;
   fotoAlt = Math.round(FOTO_ALT_PADRAO * pct / 100);
   PHOTO_H = Math.round(PHOTO_W * fotoAlt / FOTO_LARG);
+  // o mesmo ajuste aparece na seção Documento e na janela de recorte
   $("fotoTam").value = pct; $("fotoTamTxt").textContent = pct + "%";
+  $("cropAlt").value = pct; $("cropAltTxt").textContent = pct + "%";
 }
 
 const store = {
@@ -598,7 +606,7 @@ function composePhoto(li, crop) {
 let ed = null;   // { li, crop } enquanto a janela está aberta; só vale ao clicar em Aplicar
 function openCrop(li) {
   if (!fotos[li]) return;
-  ed = { li, crop: { ...(fotos[li].crop || AUTO_CROP) } };
+  ed = { li, crop: { ...(fotos[li].crop || AUTO_CROP) }, tam0: fotoTamPct };   // tam0: altura ao abrir, para o Cancelar
   $("dlgCropT").textContent = "Ajustar recorte: " + (locais[li].rua.trim() || "foto da rua");
   $("dlgCrop").showModal();
   drawCrop();
@@ -663,9 +671,18 @@ $("cropApply").onclick = () => {
   if (!ed) return;
   const img = fotos[ed.li], c = ed.crop;
   if (c.z === 1 && Math.abs(c.fx - 0.5) < 1e-3 && Math.abs(c.fy - 0.5) < 1e-3) delete img.crop; else img.crop = { ...c };
-  ed = null; $("dlgCrop").close(); renderLocais(); renderList(); toast("Recorte aplicado");
+  ed = null; $("dlgCrop").close(); store.set("ind.fotoTam", fotoTamPct);
+  renderLocais(); renderList(); toast("Ajuste aplicado");
 };
-$("dlgCrop").addEventListener("close", () => { ed = null; ptrs.clear(); drag = null });
+// Altura na folha dentro da janela: muda na hora; Cancelar volta para a altura de antes.
+$("cropAlt").addEventListener("input", e => { if (!ed) return; setFotoTam(+e.target.value); drawCrop(); checaFolha() });
+function desfazAltura() {
+  if (ed && ed.tam0 !== fotoTamPct) { setFotoTam(ed.tam0); renderList(); checaFolha() }
+  ed = null; ptrs.clear(); drag = null;
+}
+$("dlgCrop").addEventListener("click", e => { if (e.target === e.currentTarget || e.target.hasAttribute("data-close")) desfazAltura() }, true);
+$("dlgCrop").addEventListener("cancel", desfazAltura);
+$("dlgCrop").addEventListener("close", desfazAltura);
 
 // Placa de rua no canto superior direito, no estilo das placas de Boa Vista
 function drawPlaca(ctx, l) {
@@ -843,11 +860,13 @@ function checaFolha() {
     const dica = $("fotoTamDica"), it = items.find(x => fotos[x.li]) || items[0];
     if (!it) return;
     try { makePdf(it) } catch { return }
-    const passa = lastPdfFim > LIMITE_FOLHA;
+    const passa = lastPdfFim > LIMITE_FOLHA, aviso = "Com esse tamanho a indicação passa do rodapé da folha. Diminua a foto ou o texto.";
     dica.classList.toggle("warn", passa);
-    dica.textContent = passa
-      ? "Com esse tamanho a indicação passa do rodapé da folha. Diminua a foto ou o texto."
+    dica.textContent = passa ? aviso
       : "A largura já ocupa a linha toda; aumentar deixa a foto mais alta, usando o espaço livre da folha.";
+    $("cropAltDica").classList.toggle("warn", passa);
+    $("cropAltDica").textContent = passa ? aviso
+      : "Deixa a foto mais alta no Word e no PDF (a largura não muda). Vale para todas as fotos.";
   }, 250);
 }
 $("fotoTam").addEventListener("input", e => { setFotoTam(+e.target.value); store.set("ind.fotoTam", +e.target.value); renderList(); checaFolha() });
