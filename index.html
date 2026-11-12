@@ -7,7 +7,7 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap">
 <script src="https://unpkg.com/pizzip@3.1.7/dist/pizzip.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-<script src="app-auth.js?v=7" defer></script>
+<script src="app-auth.js?v=8" defer></script>
 <style>
 /* Layout: coluna de formulário à esquerda, lista de indicações à direita */
 :root {
@@ -59,7 +59,10 @@ button.small { padding: 4px 9px; font-size: 13px }
 .card .acts { display: flex; gap: 6px; margin-left: auto }
 .list { display: grid; gap: 10px }
 .empty { color: var(--muted); padding: 30px; text-align: center; border: 1px dashed var(--line); border-radius: 8px }
-.preview { width: 100%; max-width: 520px; aspect-ratio: 452 / 211; border-radius: 4px; border: 1px solid var(--line); display: block }
+.tamfoto { display: grid; gap: 4px }
+.tamfoto .zoomrow { grid-template-columns: auto 1fr 44px; font-size: 13px }
+.hint.warn { color: var(--warn); font-weight: 500 }
+.preview { width: 100%; max-width: 520px; height: auto; border-radius: 4px; border: 1px solid var(--line); display: block }
 .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--ink); color: var(--bg);
   padding: 8px 16px; border-radius: 6px; font-size: 14px; opacity: 0; transition: opacity .2s; pointer-events: none }
 .toast.on { opacity: 1 }
@@ -184,6 +187,13 @@ dialog.crop { width: min(920px, calc(100vw - 32px)) }
       <label>Data <input type="date" id="data"></label>
       <label class="check"><input type="checkbox" id="usaSelo" checked> Colocar o selo do vereador na foto</label>
       <label class="check"><input type="checkbox" id="usaPlaca" checked> Colocar placa com o nome da rua na foto</label>
+      <div class="tamfoto">
+        <label class="zoomrow" style="color:var(--muted)">Tamanho da foto na folha
+          <input type="range" id="fotoTam" min="70" max="160" step="5" value="100" aria-describedby="fotoTamDica">
+          <span id="fotoTamTxt">100%</span>
+        </label>
+        <p class="hint" id="fotoTamDica">A largura já ocupa a linha toda; aumentar deixa a foto mais alta, usando o espaço livre da folha.</p>
+      </div>
       <label>Justificativa
         <textarea id="justif" rows="5"></textarea>
       </label>
@@ -334,7 +344,15 @@ const CFG = GAB.config;
 const MUN = CFG.municipio || "Boa Vista", UF = CFG.uf || "RR", ARTIGO = CFG.artigo || "art. 110, IX";
 const ABERTURA = `QUE A PREFEITURA MUNICIPAL DE ${MUN.toLocaleUpperCase("pt-BR")}, POR MEIO DA SECRETARIA COMPETENTE,`;
 const MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
-const PHOTO_W = 1600, PHOTO_H = 746;     // mesma proporção da foto da indicação de referência
+// Foto na folha: largura fixa de 452 pt (a linha toda); a altura muda com o "Tamanho da foto na folha".
+// 100% = 211 pt, a mesma proporção da indicação de referência.
+const FOTO_LARG = 452, FOTO_ALT_PADRAO = 211, PHOTO_W = 1600;
+let fotoAlt = FOTO_ALT_PADRAO, PHOTO_H = 746;
+function setFotoTam(pct) {
+  fotoAlt = Math.round(FOTO_ALT_PADRAO * pct / 100);
+  PHOTO_H = Math.round(PHOTO_W * fotoAlt / FOTO_LARG);
+  $("fotoTam").value = pct; $("fotoTamTxt").textContent = pct + "%";
+}
 
 const store = {
   // cada gabinete guarda as próprias ruas e serviços neste navegador
@@ -487,6 +505,7 @@ function renderList() {
     const li = c.dataset.prev, src = composePhoto(li);
     c.width = src.width; c.height = src.height; c.getContext("2d").drawImage(src, 0, 0);
   });
+  if (typeof checaFolha === "function" && Object.keys(fotos).length) checaFolha();
 }
 $("list").addEventListener("input", e => { const i = e.target.dataset.i; if (i == null) return; items[i].texto = e.target.value; edits[items[i].key] = e.target.value });
 $("list").addEventListener("keydown", e => { if (e.target.dataset.prev != null && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); openCrop(e.target.dataset.prev) } });
@@ -563,7 +582,7 @@ function drawCrop() {
   $("cropZoom").value = ed.crop.z; $("cropZoomTxt").textContent = Math.round(ed.crop.z * 100) + "%";
   cancelAnimationFrame(cropFrame);
   cropFrame = requestAnimationFrame(() => {
-    const cv = $("cropCanvas"); cv.width = PHOTO_W; cv.height = PHOTO_H;
+    const cv = $("cropCanvas"); cv.width = PHOTO_W; cv.height = PHOTO_H; cv.style.aspectRatio = PHOTO_W + " / " + PHOTO_H;
     cv.getContext("2d").drawImage(composePhoto(ed.li, ed.crop), 0, 0);
   });
 }
@@ -679,7 +698,7 @@ async function makeDocx(it) {
     + para(run(`Prefeito de ${MUN}`, { b: true }), { after: 240 })
     + para(abertura(presidente, prefeito).map(s => run(s.t, { b: s.b })).join(""), { after: 200 })
     + para(run(it.texto.trim(), { b: true, sz: 20 }), { after: 200 });
-  if (temFoto) body += para(picture("rIdFoto", 2, 452 * EMU, 211 * EMU, false), { jc: "center", after: 120 });
+  if (temFoto) body += para(picture("rIdFoto", 2, FOTO_LARG * EMU, fotoAlt * EMU, false), { jc: "center", after: 120 });
   body += para(run("JUSTIFICATIVA", { b: true }), { jc: "center", after: 200, before: temFoto ? 0 : 240 })
     + para(run($("justif").value.trim(), { font: ARIAL_N }), { after: 360 })
     + para(run(`${MUN} – ${UF}, ${dataExtenso()}`), { jc: "right", after: 480 })
@@ -743,14 +762,15 @@ function makePdf(it) {
   y = richPara(pdf, abertura(presidente, prefeito), { y, size: 12, lh: 14 }) + 10;
   y = richPara(pdf, [{ t: it.texto.trim(), b: true }], { y, size: 10, lh: 11.5 });
   if (fotos[it.li]) {
-    pdf.addImage(composePhoto(it.li).toDataURL("image/jpeg", 0.85), "JPEG", (595.28 - 452) / 2, y - 2, 452, 211);
-    y += 211 + 16;
+    pdf.addImage(composePhoto(it.li).toDataURL("image/jpeg", 0.85), "JPEG", (595.28 - FOTO_LARG) / 2, y - 2, FOTO_LARG, fotoAlt);
+    y += fotoAlt + 16;
   } else y += 14;
   y = richPara(pdf, [{ t: "JUSTIFICATIVA", b: true }], { y, size: 12, lh: 14, align: "center" }) + 10;
   y = richPara(pdf, [{ t: $("justif").value.trim() }], { y, size: 11, lh: 14, family: "helvetica" }) + 22;
   y = richPara(pdf, [{ t: `${MUN} – ${UF}, ${dataExtenso()}` }], { y, size: 12, lh: 14, align: "right" }) + 26;
   y = richPara(pdf, [{ t: "______________________________", b: true }], { y, size: 12, lh: 12, align: "center" });
-  richPara(pdf, [{ t: $("vereador").value.trim(), b: true }], { y, size: 10, lh: 12, align: "center" });
+  y = richPara(pdf, [{ t: $("vereador").value.trim(), b: true }], { y, size: 10, lh: 12, align: "center" });
+  lastPdfFim = y;   // onde o texto terminou; a linha do rodapé do timbrado fica por volta de 768 pt
   return pdf.output("arraybuffer");
 }
 $("zipPdf").onclick = () => {
@@ -775,6 +795,26 @@ $("zipAll").onclick = async () => {
     toast(items.length + " arquivos gerados");
   } catch (err) { console.error(err); toast("Erro ao gerar os arquivos") }
 };
+
+/* ---------- Tamanho da foto na folha ---------- */
+// Mede a primeira indicação com foto (gerando o PDF dela) e avisa se o texto passar do rodapé.
+let lastPdfFim = 0, cabeTimer = 0;
+const LIMITE_FOLHA = 752;   // a linha do rodapé fica em ~768 pt; deixa uma folga para a assinatura não encostar
+function checaFolha() {
+  clearTimeout(cabeTimer);
+  cabeTimer = setTimeout(() => {
+    const dica = $("fotoTamDica"), it = items.find(x => fotos[x.li]) || items[0];
+    if (!it) return;
+    try { makePdf(it) } catch { return }
+    const passa = lastPdfFim > LIMITE_FOLHA;
+    dica.classList.toggle("warn", passa);
+    dica.textContent = passa
+      ? "Com esse tamanho a indicação passa do rodapé da folha. Diminua a foto ou o texto."
+      : "A largura já ocupa a linha toda; aumentar deixa a foto mais alta, usando o espaço livre da folha.";
+  }, 250);
+}
+$("fotoTam").addEventListener("input", e => { setFotoTam(+e.target.value); store.set("ind.fotoTam", +e.target.value); renderList(); checaFolha() });
+setFotoTam(store.get("ind.fotoTam", 100));
 
 renderLocais(); renderServices(); build();
 };
